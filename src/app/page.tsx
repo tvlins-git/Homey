@@ -111,7 +111,7 @@ function RoomCard({
 }) {
   const [open, setOpen] = useState(false);
   const devicesId = useId();
-  const masterLabel = state?.mixed ? "Mixed" : state?.on ? "On" : "Off";
+  const masterLabel = state?.mixed ? "All" : state?.on ? "On" : "Off";
   const masterClass = state?.mixed
     ? "is-mixed"
     : state?.on
@@ -141,7 +141,7 @@ function RoomCard({
               {busy
                 ? "Updating…"
                 : state?.mixed
-                  ? "Mixed · tap for all off"
+                  ? "All · tap for all off"
                   : state
                     ? `${state.devices.filter((d) => d.on).length}/${state.devices.length} on`
                     : "Loading…"}
@@ -407,7 +407,7 @@ export default function Home() {
                     : allRoomsOn
                       ? "All on"
                       : anyRoomOn
-                        ? "Mixed"
+                        ? "All"
                         : "All off"}
               </span>
               <div className="home-master-actions">
