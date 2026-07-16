@@ -5,7 +5,7 @@ export const ROOM_NAMES = {
   "maria-room": "Maria Room",
   "ellie-room": "Ellie Room",
   backyard: "Backyard",
-  "front-yard": "Front Yard",
+  "front-yard": "Frontyard",
 } as const;
 
 export type RoomSlug = keyof typeof ROOM_NAMES;

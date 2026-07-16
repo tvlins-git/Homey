@@ -1,6 +1,6 @@
 # Homey Living Room dashboard
 
-Very simple Next.js dashboard for home lights across Living Room, Dining Room, Master Bedroom, Maria Room, Ellie Room, Backyard, and Front Yard. Homey credentials stay on the server — never in the browser bundle.
+Very simple Next.js dashboard for home lights across Living Room, Dining Room, Master Bedroom, Maria Room, Ellie Room, Backyard, and Frontyard. Homey credentials stay on the server — never in the browser bundle.
 
 ## Secrets (do not commit)
 

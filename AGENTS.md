@@ -15,7 +15,7 @@ Repo: `tvlins-git/Homey` (deploys from `main` via Vercel).
 ## Current UI
 
 - Garage slider **above** Living Room (open/close via Homey flows)
-- Multi-room light dashboard (Living Room, Dining Room, Master Bedroom, Maria Room, Ellie Room, Backyard, Front Yard)
+- Multi-room light dashboard (Living Room, Dining Room, Master Bedroom, Maria Room, Ellie Room, Backyard, Frontyard)
 - API: `GET|POST /api/rooms/[slug]`
 - Master toggle + per-device on/off for `light` / `socket` with `onoff`
 - Mixed device state → master turns **all off**
