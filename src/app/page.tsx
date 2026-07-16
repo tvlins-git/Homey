@@ -12,15 +12,6 @@ type RoomState = {
   devices: { id: string; name: string; class: string; on: boolean }[];
 };
 
-type FlowKind = "flow" | "advancedflow";
-
-type FlowSummary = {
-  id: string;
-  name: string;
-  kind: FlowKind;
-  folder: string | null;
-};
-
 const ROOMS: { slug: RoomSlug; title: string }[] = [
   { slug: "living-room", title: "Living Room" },
   { slug: "dining-room", title: "Dining Room" },
@@ -96,86 +87,27 @@ function RoomCard({
   );
 }
 
-function FlowsCard({
-  flows,
-  busyId,
-  onRun,
-}: {
-  flows: FlowSummary[] | null;
-  busyId: string | null;
-  onRun: (flow: FlowSummary) => void;
-}) {
-  return (
-    <section className="panel flows">
-      <div className="room-head">
-        <div className="room-title">
-          <h2>Flows</h2>
-          <p className="room-meta">
-            {flows === null
-              ? "Loading…"
-              : flows.length === 0
-                ? "No triggerable flows"
-                : `${flows.length} ready · tap to run`}
-          </p>
-        </div>
-      </div>
-
-      {flows && flows.length > 0 && (
-        <ul className="flow-list">
-          {flows.map((flow) => {
-            const key = `${flow.kind}:${flow.id}`;
-            const running = busyId === key;
-            return (
-              <li key={key}>
-                <span className="flow-name">{flow.name}</span>
-                <button
-                  type="button"
-                  className="flow-run"
-                  disabled={busyId !== null}
-                  onClick={() => onRun(flow)}
-                >
-                  {running ? "Running…" : "Run"}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 export default function Home() {
   const [needsLogin, setNeedsLogin] = useState(false);
   const [password, setPassword] = useState("");
   const [rooms, setRooms] = useState<Partial<Record<RoomSlug, RoomState>>>({});
-  const [flows, setFlows] = useState<FlowSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busySlug, setBusySlug] = useState<RoomSlug | null>(null);
   const [busyDeviceId, setBusyDeviceId] = useState<string | null>(null);
-  const [busyFlowId, setBusyFlowId] = useState<string | null>(null);
   const [loginBusy, setLoginBusy] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
-    const [roomResults, flowsRes] = await Promise.all([
-      Promise.all(
-        ROOMS.map(async ({ slug }) => {
-          const res = await fetch(`/api/rooms/${slug}`);
-          return { slug, res, data: await res.json() };
-        }),
-      ),
-      fetch("/api/flows"),
-    ]);
-    const flowsData = await flowsRes.json();
+    const roomResults = await Promise.all(
+      ROOMS.map(async ({ slug }) => {
+        const res = await fetch(`/api/rooms/${slug}`);
+        return { slug, res, data: await res.json() };
+      }),
+    );
 
-    if (
-      roomResults.some((r) => r.res.status === 401) ||
-      flowsRes.status === 401
-    ) {
+    if (roomResults.some((r) => r.res.status === 401)) {
       setNeedsLogin(true);
       setRooms({});
-      setFlows(null);
       return;
     }
 
@@ -186,12 +118,6 @@ export default function Home() {
         continue;
       }
       next[slug] = data;
-    }
-    if (!flowsRes.ok) {
-      setError(flowsData.error ?? "Failed to load Flows");
-      setFlows([]);
-    } else {
-      setFlows(flowsData.flows ?? []);
     }
     setNeedsLogin(false);
     setRooms(next);
@@ -273,26 +199,6 @@ export default function Home() {
     }
   }
 
-  async function runFlow(flow: FlowSummary) {
-    if (busyFlowId) return;
-    const key = `${flow.kind}:${flow.id}`;
-    setBusyFlowId(key);
-    setError(null);
-    try {
-      const res = await fetch("/api/flows", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: flow.id, kind: flow.kind }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Flow failed");
-      }
-    } finally {
-      setBusyFlowId(null);
-    }
-  }
-
   return (
     <main className="page">
       <div className="glow" aria-hidden />
@@ -332,11 +238,6 @@ export default function Home() {
                 }
               />
             ))}
-            <FlowsCard
-              flows={flows}
-              busyId={busyFlowId}
-              onRun={(flow) => void runFlow(flow)}
-            />
           </div>
         )}
 

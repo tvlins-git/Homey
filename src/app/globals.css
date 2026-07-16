@@ -239,59 +239,6 @@ h2 {
   text-align: center;
 }
 
-.flows {
-  grid-column: 1 / -1;
-}
-
-.flow-list {
-  list-style: none;
-  margin: 0.65rem 0 0;
-  padding: 0;
-  display: grid;
-  gap: 0.35rem;
-}
-
-.flow-list li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.45rem 0.55rem;
-  border-radius: 0.55rem;
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.flow-name {
-  min-width: 0;
-  font-size: 0.88rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.flow-run {
-  flex-shrink: 0;
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
-  padding: 0.35rem 0.7rem;
-  border: 0;
-  border-radius: 0.55rem;
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-  transition: transform 120ms ease, opacity 120ms ease;
-}
-
-.flow-run:hover:not(:disabled) {
-  transform: scale(1.04);
-}
-
-.flow-run:disabled {
-  cursor: wait;
-  opacity: 0.7;
-}
-
 @keyframes pulse {
   0%,
   100% {
