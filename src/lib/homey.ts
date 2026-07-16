@@ -157,12 +157,24 @@ type HomeyFlowRecord = {
   folder?: string | null;
 };
 
+type HomeyAdvancedFlow = HomeyFlowRecord & {
+  cards?: Record<
+    string,
+    { id: string; type?: string; args?: Record<string, unknown> }
+  >;
+};
+
+type HomeyClassicFlow = HomeyFlowRecord & {
+  actions?: { id: string; uri?: string; args?: Record<string, unknown> }[];
+};
+
 type FlowKind = "flow" | "advancedflow";
 
 type FlowSummary = {
   id: string;
   name: string;
   kind: FlowKind;
+  triggerable: boolean;
 };
 
 export type GarageState = {
@@ -172,36 +184,52 @@ export type GarageState = {
   closeFlowId: string;
   openFlowKind: FlowKind;
   closeFlowKind: FlowKind;
+  openFlowTriggerable: boolean;
+  closeFlowTriggerable: boolean;
 };
 
-function toTriggerableFlows(
-  records: Record<string, HomeyFlowRecord>,
-  kind: FlowKind,
-): FlowSummary[] {
-  return Object.values(records)
-    .filter((f) => f.enabled !== false && f.triggerable === true)
-    .map((f) => ({ id: f.id, name: f.name, kind }));
+function asFlowList(
+  records: Record<string, HomeyFlowRecord> | HomeyFlowRecord[],
+): HomeyFlowRecord[] {
+  return Array.isArray(records) ? records : Object.values(records);
 }
 
-async function listTriggerableFlows(): Promise<FlowSummary[]> {
+function toFlowSummaries(
+  records: Record<string, HomeyFlowRecord> | HomeyFlowRecord[],
+  kind: FlowKind,
+): FlowSummary[] {
+  return asFlowList(records)
+    .filter((f) => f.enabled !== false)
+    .map((f) => ({
+      id: f.id,
+      name: f.name,
+      kind,
+      triggerable: f.triggerable === true,
+    }));
+}
+
+async function listGarageFlows(): Promise<FlowSummary[]> {
   const [classic, advanced] = await Promise.all([
-    homeyFetch<Record<string, HomeyFlowRecord>>("/api/manager/flow/flow"),
-    homeyFetch<Record<string, HomeyFlowRecord>>(
+    homeyFetch<Record<string, HomeyFlowRecord> | HomeyFlowRecord[]>(
+      "/api/manager/flow/flow",
+    ),
+    homeyFetch<Record<string, HomeyFlowRecord> | HomeyFlowRecord[]>(
       "/api/manager/flow/advancedflow",
     ),
   ]);
   return [
-    ...toTriggerableFlows(classic, "flow"),
-    ...toTriggerableFlows(advanced, "advancedflow"),
+    ...toFlowSummaries(classic, "flow"),
+    ...toFlowSummaries(advanced, "advancedflow"),
   ];
 }
 
 function requireFlow(flows: FlowSummary[], name: string): FlowSummary {
-  const flow = flows.find((f) => f.name === name);
-  if (!flow) {
-    throw new Error(`Homey flow not found or not triggerable: ${name}`);
-  }
-  return flow;
+  const exact = flows.find((f) => f.name === name);
+  if (exact) return exact;
+  const lowered = name.toLowerCase();
+  const fuzzy = flows.find((f) => f.name.toLowerCase() === lowered);
+  if (fuzzy) return fuzzy;
+  throw new Error(`Homey flow not found: ${name}`);
 }
 
 async function triggerFlow(flow: FlowSummary): Promise<void> {
@@ -212,10 +240,74 @@ async function triggerFlow(flow: FlowSummary): Promise<void> {
   await homeyFetch(path, { method: "POST", body: "{}" });
 }
 
+/** Run a Homey flow card action (used when advanced flows are not triggerable). */
+async function runFlowCardAction(
+  cardId: string,
+  args: Record<string, unknown> = {},
+): Promise<void> {
+  const lastColon = cardId.lastIndexOf(":");
+  if (lastColon <= 0) {
+    throw new Error(`Invalid Homey flow card id: ${cardId}`);
+  }
+  const ownerUri = cardId.slice(0, lastColon);
+  const path = `/api/manager/flow/flowcardaction/${encodeURIComponent(ownerUri)}/${encodeURIComponent(cardId)}/run`;
+  await homeyFetch(path, {
+    method: "POST",
+    body: JSON.stringify({ args }),
+  });
+}
+
+/**
+ * Start a named garage flow. Homey's /trigger endpoint only works when the
+ * flow is marked triggerable (has a Start / "This Flow is started" card).
+ * Open Garage / Close Garage are advanced flows that only contain action
+ * cards, so we execute those cards directly — same effect as running the flow.
+ */
+async function runGarageFlow(flow: FlowSummary): Promise<void> {
+  if (flow.triggerable) {
+    await triggerFlow(flow);
+    return;
+  }
+
+  if (flow.kind === "advancedflow") {
+    const detailed = await homeyFetch<HomeyAdvancedFlow>(
+      `/api/manager/flow/advancedflow/${flow.id}`,
+    );
+    const actions = Object.values(detailed.cards ?? {}).filter(
+      (card) => card.type === "action" && typeof card.id === "string",
+    );
+    if (actions.length === 0) {
+      throw new Error(
+        `Homey flow "${flow.name}" has no action cards and is not triggerable`,
+      );
+    }
+    for (const card of actions) {
+      await runFlowCardAction(card.id, card.args ?? {});
+    }
+    return;
+  }
+
+  const detailed = await homeyFetch<HomeyClassicFlow>(
+    `/api/manager/flow/flow/${flow.id}`,
+  );
+  const actions = detailed.actions ?? [];
+  if (actions.length === 0) {
+    throw new Error(
+      `Homey flow "${flow.name}" has no actions and is not triggerable`,
+    );
+  }
+  for (const action of actions) {
+    const cardId = action.id.includes(":")
+      ? action.id
+      : `${action.uri ?? ""}:${action.id}`.replace(/^:/, "");
+    await runFlowCardAction(cardId, action.args ?? {});
+  }
+}
+
 export async function getGarageState(): Promise<GarageState> {
   const [devices, flows] = await Promise.all([
     homeyFetch<Record<string, HomeyDevice>>("/api/manager/devices/device"),
-    listTriggerableFlows(),
+    listGarageFlows(),
   ]);
 
   const sensor = Object.values(devices).find((d) => d.name === GARAGE_SENSOR_NAME);
@@ -231,6 +323,8 @@ export async function getGarageState(): Promise<GarageState> {
     closeFlowId: closeFlow.id,
     openFlowKind: openFlow.kind,
     closeFlowKind: closeFlow.kind,
+    openFlowTriggerable: openFlow.triggerable,
+    closeFlowTriggerable: closeFlow.triggerable,
   };
 }
 
@@ -241,13 +335,16 @@ export async function setGarageOpen(open: boolean): Promise<GarageState> {
         id: state.openFlowId,
         name: OPEN_GARAGE_FLOW,
         kind: state.openFlowKind,
+        triggerable: state.openFlowTriggerable,
       }
     : {
         id: state.closeFlowId,
         name: CLOSE_GARAGE_FLOW,
         kind: state.closeFlowKind,
+        triggerable: state.closeFlowTriggerable,
       };
-  await triggerFlow(flow);
+  await runGarageFlow(flow);
+
   // Sensor may lag; return requested intent with refreshed flow IDs
   const refreshed = await getGarageState();
   return { ...refreshed, open };
