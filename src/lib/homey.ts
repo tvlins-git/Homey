@@ -1,5 +1,11 @@
-const LIVING_ROOM_NAME = "Living Room";
 const CONTROLLABLE_CLASSES = new Set(["light", "socket"]);
+
+export const ROOM_NAMES = {
+  "living-room": "Living Room",
+  "dining-room": "Dining Room",
+} as const;
+
+export type RoomSlug = keyof typeof ROOM_NAMES;
 
 function getConfig() {
   const url = process.env.HOMEY_URL?.replace(/\/$/, "");
@@ -41,7 +47,8 @@ type HomeyDevice = {
   capabilitiesObj?: Record<string, { value?: unknown }>;
 };
 
-export type LivingRoomState = {
+export type RoomState = {
+  slug: RoomSlug;
   zoneId: string;
   zoneName: string;
   /** True when every controllable device is on */
@@ -51,14 +58,19 @@ export type LivingRoomState = {
   devices: { id: string; name: string; class: string; on: boolean }[];
 };
 
-export async function getLivingRoomState(): Promise<LivingRoomState> {
+export function isRoomSlug(value: string): value is RoomSlug {
+  return value in ROOM_NAMES;
+}
+
+export async function getRoomState(slug: RoomSlug): Promise<RoomState> {
+  const roomName = ROOM_NAMES[slug];
   const [zones, devices] = await Promise.all([
     homeyFetch<Record<string, HomeyZone>>("/api/manager/zones/zone"),
     homeyFetch<Record<string, HomeyDevice>>("/api/manager/devices/device"),
   ]);
 
-  const zone = Object.values(zones).find((z) => z.name === LIVING_ROOM_NAME);
-  if (!zone) throw new Error("Living Room zone not found");
+  const zone = Object.values(zones).find((z) => z.name === roomName);
+  if (!zone) throw new Error(`${roomName} zone not found`);
 
   const roomDevices = Object.values(devices)
     .filter(
@@ -79,6 +91,7 @@ export async function getLivingRoomState(): Promise<LivingRoomState> {
   const allOn = roomDevices.length > 0 && roomDevices.every((d) => d.on);
 
   return {
+    slug,
     zoneId: zone.id,
     zoneName: zone.name,
     on: allOn,
@@ -87,8 +100,8 @@ export async function getLivingRoomState(): Promise<LivingRoomState> {
   };
 }
 
-export async function setLivingRoomPower(on: boolean): Promise<LivingRoomState> {
-  const state = await getLivingRoomState();
+export async function setRoomPower(slug: RoomSlug, on: boolean): Promise<RoomState> {
+  const state = await getRoomState(slug);
   await Promise.all(
     state.devices.map((device) =>
       homeyFetch(`/api/manager/devices/device/${device.id}/capability/onoff`, {
@@ -97,21 +110,40 @@ export async function setLivingRoomPower(on: boolean): Promise<LivingRoomState> 
       }),
     ),
   );
-  return getLivingRoomState();
+  return getRoomState(slug);
 }
 
-export async function setLivingRoomDevicePower(
+export async function setRoomDevicePower(
+  slug: RoomSlug,
   deviceId: string,
   on: boolean,
-): Promise<LivingRoomState> {
-  const state = await getLivingRoomState();
+): Promise<RoomState> {
+  const state = await getRoomState(slug);
   const device = state.devices.find((d) => d.id === deviceId);
   if (!device) {
-    throw new Error("Device is not a Living Room light/socket");
+    throw new Error(`Device is not a ${ROOM_NAMES[slug]} light/socket`);
   }
   await homeyFetch(`/api/manager/devices/device/${deviceId}/capability/onoff`, {
     method: "PUT",
     body: JSON.stringify({ value: on }),
   });
-  return getLivingRoomState();
+  return getRoomState(slug);
+}
+
+/** @deprecated use getRoomState("living-room") */
+export type LivingRoomState = Omit<RoomState, "slug">;
+
+export async function getLivingRoomState(): Promise<RoomState> {
+  return getRoomState("living-room");
+}
+
+export async function setLivingRoomPower(on: boolean): Promise<RoomState> {
+  return setRoomPower("living-room", on);
+}
+
+export async function setLivingRoomDevicePower(
+  deviceId: string,
+  on: boolean,
+): Promise<RoomState> {
+  return setRoomDevicePower("living-room", deviceId, on);
 }
