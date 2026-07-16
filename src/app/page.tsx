@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 type LivingRoomState = {
   zoneName: string;
   on: boolean;
+  mixed: boolean;
   devices: { id: string; name: string; class: string; on: boolean }[];
 };
 
@@ -14,6 +15,7 @@ export default function Home() {
   const [state, setState] = useState<LivingRoomState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyDeviceId, setBusyDeviceId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -60,15 +62,17 @@ export default function Home() {
     }
   }
 
-  async function toggle() {
+  async function toggleMaster() {
     if (!state || busy) return;
+    // Mixed or all-on → turn everything off; all-off → turn everything on
+    const nextOn = state.mixed || state.on ? false : true;
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/living-room", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ on: !state.on }),
+        body: JSON.stringify({ on: nextOn }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -81,13 +85,41 @@ export default function Home() {
     }
   }
 
+  async function toggleDevice(deviceId: string, currentlyOn: boolean) {
+    if (busy || busyDeviceId) return;
+    setBusyDeviceId(deviceId);
+    setError(null);
+    try {
+      const res = await fetch("/api/living-room", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId, on: !currentlyOn }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Device toggle failed");
+        return;
+      }
+      setState(data);
+    } finally {
+      setBusyDeviceId(null);
+    }
+  }
+
+  const masterLabel = state?.mixed ? "Mixed" : state?.on ? "On" : "Off";
+  const masterClass = state?.mixed
+    ? "is-mixed"
+    : state?.on
+      ? "is-on"
+      : "is-off";
+
   return (
     <main className="page">
       <div className="glow" aria-hidden />
       <section className="panel">
         <p className="brand">Homey</p>
         <h1>Living Room</h1>
-        <p className="sub">One switch for the room lights</p>
+        <p className="sub">Room master + individual lights</p>
 
         {needsLogin ? (
           <form className="login" onSubmit={login}>
@@ -105,15 +137,21 @@ export default function Home() {
         ) : (
           <>
             <button
-              className={`power ${state?.on ? "is-on" : "is-off"}`}
+              className={`power ${masterClass}`}
               type="button"
-              onClick={() => void toggle()}
+              onClick={() => void toggleMaster()}
               disabled={!state || busy}
               aria-pressed={state?.on ?? false}
             >
-              <span className="power-label">{state?.on ? "On" : "Off"}</span>
+              <span className="power-label">{masterLabel}</span>
               <span className="power-hint">
-                {busy ? "Updating…" : state ? "Tap to toggle" : "Loading…"}
+                {busy
+                  ? "Updating…"
+                  : state?.mixed
+                    ? "Tap to turn all off"
+                    : state
+                      ? "Tap to toggle all"
+                      : "Loading…"}
               </span>
             </button>
 
@@ -122,7 +160,14 @@ export default function Home() {
                 {state.devices.map((d) => (
                   <li key={d.id}>
                     <span>{d.name}</span>
-                    <span className={d.on ? "dot on" : "dot"} />
+                    <button
+                      type="button"
+                      className={d.on ? "dot on" : "dot"}
+                      aria-label={`Turn ${d.name} ${d.on ? "off" : "on"}`}
+                      aria-pressed={d.on}
+                      disabled={busy || busyDeviceId !== null}
+                      onClick={() => void toggleDevice(d.id, d.on)}
+                    />
                   </li>
                 ))}
               </ul>

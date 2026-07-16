@@ -111,6 +111,12 @@ h1 {
   animation: pulse 2.4s ease-in-out infinite;
 }
 
+.power.is-mixed {
+  background: linear-gradient(160deg, #e8d4a0, #c9b07a);
+  box-shadow: 0 0 0 8px rgba(201, 176, 122, 0.2), 0 14px 30px rgba(28, 36, 28, 0.15);
+  color: #5a4a22;
+}
+
 .power:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.02);
 }
@@ -146,10 +152,24 @@ h1 {
 }
 
 .dot {
-  width: 0.65rem;
-  height: 0.65rem;
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 0;
+  padding: 0;
   border-radius: 50%;
   background: #b7beb4;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.dot:hover:not(:disabled) {
+  transform: scale(1.12);
+}
+
+.dot:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 .dot.on {

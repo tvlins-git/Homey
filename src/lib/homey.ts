@@ -44,7 +44,10 @@ type HomeyDevice = {
 export type LivingRoomState = {
   zoneId: string;
   zoneName: string;
+  /** True when every controllable device is on */
   on: boolean;
+  /** True when some devices are on and some are off */
+  mixed: boolean;
   devices: { id: string; name: string; class: string; on: boolean }[];
 };
 
@@ -72,12 +75,14 @@ export async function getLivingRoomState(): Promise<LivingRoomState> {
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const on = roomDevices.some((d) => d.on);
+  const anyOn = roomDevices.some((d) => d.on);
+  const allOn = roomDevices.length > 0 && roomDevices.every((d) => d.on);
 
   return {
     zoneId: zone.id,
     zoneName: zone.name,
-    on,
+    on: allOn,
+    mixed: anyOn && !allOn,
     devices: roomDevices,
   };
 }
@@ -92,5 +97,21 @@ export async function setLivingRoomPower(on: boolean): Promise<LivingRoomState> 
       }),
     ),
   );
+  return getLivingRoomState();
+}
+
+export async function setLivingRoomDevicePower(
+  deviceId: string,
+  on: boolean,
+): Promise<LivingRoomState> {
+  const state = await getLivingRoomState();
+  const device = state.devices.find((d) => d.id === deviceId);
+  if (!device) {
+    throw new Error("Device is not a Living Room light/socket");
+  }
+  await homeyFetch(`/api/manager/devices/device/${deviceId}/capability/onoff`, {
+    method: "PUT",
+    body: JSON.stringify({ value: on }),
+  });
   return getLivingRoomState();
 }
