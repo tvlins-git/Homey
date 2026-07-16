@@ -14,7 +14,7 @@ const body = DM_Sans({
 
 export const metadata: Metadata = {
   title: "Homey · Home",
-  description: "Living Room and Dining Room control for Homey",
+  description: "Living Room, Dining Room, and Master Bedroom control for Homey",
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
 # Homey Living Room dashboard
 
-Very simple Next.js dashboard for **Living Room** and **Dining Room** lights. Homey credentials stay on the server — never in the browser bundle.
+Very simple Next.js dashboard for **Living Room**, **Dining Room**, and **Master Bedroom** lights. Homey credentials stay on the server — never in the browser bundle.
 
 ## Secrets (do not commit)
 
