@@ -147,3 +147,53 @@ export async function setLivingRoomDevicePower(
 ): Promise<RoomState> {
   return setRoomDevicePower("living-room", deviceId, on);
 }
+
+const OPEN_GARAGE_NAME = "Open Garage Virtual";
+const CLOSE_GARAGE_NAME = "Close Garage Virtual";
+const GARAGE_SENSOR_NAME = "Garage Door";
+
+export type GarageState = {
+  open: boolean;
+  sensorName: string;
+  openDeviceId: string;
+  closeDeviceId: string;
+};
+
+async function getDevices() {
+  return homeyFetch<Record<string, HomeyDevice>>("/api/manager/devices/device");
+}
+
+function requireDevice(
+  devices: Record<string, HomeyDevice>,
+  name: string,
+): HomeyDevice {
+  const device = Object.values(devices).find((d) => d.name === name);
+  if (!device) throw new Error(`Homey device not found: ${name}`);
+  return device;
+}
+
+export async function getGarageState(): Promise<GarageState> {
+  const devices = await getDevices();
+  const openBtn = requireDevice(devices, OPEN_GARAGE_NAME);
+  const closeBtn = requireDevice(devices, CLOSE_GARAGE_NAME);
+  const sensor = requireDevice(devices, GARAGE_SENSOR_NAME);
+
+  return {
+    open: Boolean(sensor.capabilitiesObj?.alarm_motion?.value),
+    sensorName: sensor.name,
+    openDeviceId: openBtn.id,
+    closeDeviceId: closeBtn.id,
+  };
+}
+
+export async function setGarageOpen(open: boolean): Promise<GarageState> {
+  const state = await getGarageState();
+  const deviceId = open ? state.openDeviceId : state.closeDeviceId;
+  await homeyFetch(`/api/manager/devices/device/${deviceId}/capability/button`, {
+    method: "PUT",
+    body: JSON.stringify({ value: true }),
+  });
+  // Sensor may lag; return requested intent with refreshed IDs
+  const refreshed = await getGarageState();
+  return { ...refreshed, open };
+}
