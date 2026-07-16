@@ -41,27 +41,30 @@ function RoomCard({
 
   return (
     <section className="panel room">
-      <h2>{title}</h2>
-      <p className="sub">Room master + individual lights</p>
-
-      <button
-        className={`power ${masterClass}`}
-        type="button"
-        onClick={onToggleMaster}
-        disabled={!state || busy}
-        aria-pressed={state?.on ?? false}
-      >
-        <span className="power-label">{masterLabel}</span>
-        <span className="power-hint">
-          {busy
-            ? "Updating…"
-            : state?.mixed
-              ? "Tap to turn all off"
-              : state
-                ? "Tap to toggle all"
-                : "Loading…"}
-        </span>
-      </button>
+      <div className="room-head">
+        <div className="room-title">
+          <h2>{title}</h2>
+          <p className="room-meta">
+            {busy
+              ? "Updating…"
+              : state?.mixed
+                ? "Mixed · tap for all off"
+                : state
+                  ? `${state.devices.filter((d) => d.on).length}/${state.devices.length} on`
+                  : "Loading…"}
+          </p>
+        </div>
+        <button
+          className={`power ${masterClass}`}
+          type="button"
+          onClick={onToggleMaster}
+          disabled={!state || busy}
+          aria-label={`Toggle all ${title} lights`}
+          aria-pressed={state?.on ?? false}
+        >
+          <span className="power-label">{masterLabel}</span>
+        </button>
+      </div>
 
       {state && (
         <ul className="devices">
@@ -203,7 +206,6 @@ export default function Home() {
         <header className="hero">
           <p className="brand">Homey</p>
           <h1>Home</h1>
-          <p className="sub">Living Room and Dining Room lights</p>
         </header>
 
         {needsLogin ? (
