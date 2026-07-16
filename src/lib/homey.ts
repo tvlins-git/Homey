@@ -258,10 +258,8 @@ async function runFlowCardAction(
 }
 
 /**
- * Start a named garage flow. Homey's /trigger endpoint only works when the
- * flow is marked triggerable (has a Start / "This Flow is started" card).
- * Open Garage / Close Garage are advanced flows that only contain action
- * cards, so we execute those cards directly — same effect as running the flow.
+ * Start a named garage flow. Prefer Homey's /trigger when the flow is
+ * triggerable (has a Start card). Otherwise run its action cards directly.
  */
 async function runGarageFlow(flow: FlowSummary): Promise<void> {
   if (flow.triggerable) {
