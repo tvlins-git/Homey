@@ -1,12 +1,8 @@
+import { ROOM_NAMES, type RoomSlug } from "@/lib/rooms";
+
+export { ROOM_NAMES, ROOMS, type RoomSlug } from "@/lib/rooms";
+
 const CONTROLLABLE_CLASSES = new Set(["light", "socket"]);
-
-export const ROOM_NAMES = {
-  "living-room": "Living Room",
-  "dining-room": "Dining Room",
-  "master-bedroom": "Master Bedroom",
-} as const;
-
-export type RoomSlug = keyof typeof ROOM_NAMES;
 
 function getConfig() {
   const url = process.env.HOMEY_URL?.replace(/\/$/, "");
