@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useId, useState } from "react";
 
-type RoomSlug = "living-room" | "dining-room";
+type RoomSlug = "living-room" | "dining-room" | "master-bedroom";
 
 type RoomState = {
   slug: RoomSlug;
@@ -15,6 +15,7 @@ type RoomState = {
 const ROOMS: { slug: RoomSlug; title: string }[] = [
   { slug: "living-room", title: "Living Room" },
   { slug: "dining-room", title: "Dining Room" },
+  { slug: "master-bedroom", title: "Master Bedroom" },
 ];
 
 function RoomCard({
@@ -32,28 +33,45 @@ function RoomCard({
   onToggleMaster: () => void;
   onToggleDevice: (deviceId: string, currentlyOn: boolean) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const devicesId = useId();
   const masterLabel = state?.mixed ? "Mixed" : state?.on ? "On" : "Off";
   const masterClass = state?.mixed
     ? "is-mixed"
     : state?.on
       ? "is-on"
       : "is-off";
+  const deviceCount = state?.devices.length ?? 0;
 
   return (
-    <section className="panel room">
+    <section className={`panel room${open ? " is-open" : ""}`}>
       <div className="room-head">
-        <div className="room-title">
-          <h2>{title}</h2>
-          <p className="room-meta">
-            {busy
-              ? "Updating…"
-              : state?.mixed
-                ? "Mixed · tap for all off"
-                : state
-                  ? `${state.devices.filter((d) => d.on).length}/${state.devices.length} on`
-                  : "Loading…"}
-          </p>
-        </div>
+        <button
+          type="button"
+          className="room-toggle"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          aria-controls={devicesId}
+          disabled={!state || deviceCount === 0}
+        >
+          <div className="room-title">
+            <h2>
+              {title}
+              <span className="chevron" aria-hidden>
+                ▾
+              </span>
+            </h2>
+            <p className="room-meta">
+              {busy
+                ? "Updating…"
+                : state?.mixed
+                  ? "Mixed · tap for all off"
+                  : state
+                    ? `${state.devices.filter((d) => d.on).length}/${state.devices.length} on`
+                    : "Loading…"}
+            </p>
+          </div>
+        </button>
         <button
           className={`power ${masterClass}`}
           type="button"
@@ -66,8 +84,12 @@ function RoomCard({
         </button>
       </div>
 
-      {state && (
-        <ul className="devices">
+      {state && deviceCount > 0 && (
+        <ul
+          id={devicesId}
+          className="devices"
+          hidden={!open}
+        >
           {state.devices.map((d) => (
             <li key={d.id}>
               <span>{d.name}</span>

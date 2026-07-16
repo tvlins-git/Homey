@@ -3,6 +3,7 @@ const CONTROLLABLE_CLASSES = new Set(["light", "socket"]);
 export const ROOM_NAMES = {
   "living-room": "Living Room",
   "dining-room": "Dining Room",
+  "master-bedroom": "Master Bedroom",
 } as const;
 
 export type RoomSlug = keyof typeof ROOM_NAMES;

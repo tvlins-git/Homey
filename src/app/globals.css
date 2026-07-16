@@ -103,6 +103,26 @@ h1 {
   text-align: left;
 }
 
+.room-toggle {
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.room-toggle:disabled {
+  cursor: default;
+}
+
+.room-toggle:disabled .chevron {
+  opacity: 0;
+}
+
 .room-title {
   min-width: 0;
 }
@@ -113,6 +133,21 @@ h2 {
   font-weight: 560;
   font-size: 1.15rem;
   letter-spacing: -0.03em;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chevron {
+  display: inline-block;
+  font-size: 0.85em;
+  color: var(--muted);
+  transform: rotate(-90deg);
+  transition: transform 160ms ease;
+}
+
+.room.is-open .chevron {
+  transform: rotate(0deg);
 }
 
 .room-meta {
@@ -174,6 +209,10 @@ h2 {
   text-align: left;
   display: grid;
   gap: 0.35rem;
+}
+
+.devices[hidden] {
+  display: none;
 }
 
 .devices li {
@@ -252,6 +291,10 @@ h2 {
 @media (prefers-reduced-motion: reduce) {
   .power.is-on {
     animation: none;
+  }
+
+  .chevron {
+    transition: none;
   }
 }
 
