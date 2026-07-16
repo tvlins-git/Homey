@@ -51,7 +51,8 @@ Lookup is by exact name among enabled flows. If a flow ever loses its Start card
 - Local state follows drag; on **release** (`onPointerUp` / `onKeyUp`):
   - `value >= 65` → call API open (if not already open), snap to 100
   - `value <= 35` → call API close (if not already closed), snap to 0
-  - else snap back to current Homey/sensor state
+  - else snap back to the sticky commanded position
+- After open/close, slider + badge stay at that side until the user slides the other way (sensor lag must not pull it back)
 - Labels: Close (left) / Open (right); badge shows Open/Closed
 
 ### Safety
