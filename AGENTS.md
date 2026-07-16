@@ -27,11 +27,11 @@ Repo: `tvlins-git/Homey` (deploys from `main` via Vercel).
 
 | Role | Name | How |
 | --- | --- | --- |
-| Open | Advanced flow `Open Garage` | If `triggerable`, `POST …/advancedflow/:id/trigger`. Otherwise run its action cards (currently Gogogate `open-door` door 1) via `POST …/flowcardaction/:uri/:id/run`. |
-| Close | Advanced flow `Close Garage` | Same pattern (`close-door` door 1). |
+| Open | Advanced flow `Open Garage` | `POST …/advancedflow/:id/trigger` (flows now have a Start card → `triggerable: true`) |
+| Close | Advanced flow `Close Garage` | same |
 | Status | Device `Garage Door` | read `alarm_motion` (true ≈ open; sensor can lag after command) |
 
-These flows exist but are **not** marked `triggerable` (no Start / “This Flow is started” card). The dashboard still runs them by executing their action cards.
+Lookup is by exact name among enabled flows. If a flow ever loses its Start card (`triggerable: false`), the dashboard falls back to running that flow’s action cards via `flowcardaction/.../run`.
 
 ### Backend
 
