@@ -7,52 +7,73 @@ Repo: `tvlins-git/Homey` (deploys from `main` via Vercel).
 
 - Browser → Next.js API routes (cookie auth) → Homey Web API
 - Server-only env: `HOMEY_URL`, `HOMEY_TOKEN`, `DASHBOARD_PASSWORD` (never `NEXT_PUBLIC_*`)
-- Homey cloud URL pattern: `https://<homeyId>.connect.athom.com`
-- Auth: `src/lib/auth.ts` + `POST /api/login`
-- Homey client: `src/lib/homey.ts`
+- Homey cloud URL: `https://65f2e959051ba009ec117757.connect.athom.com` (pattern `https://<homeyId>.connect.athom.com`)
+- Auth: [`src/lib/auth.ts`](src/lib/auth.ts) + `POST /api/login`
+- Homey client: [`src/lib/homey.ts`](src/lib/homey.ts)
+- Room registry: [`src/lib/rooms.ts`](src/lib/rooms.ts) (`ROOM_NAMES` / `ROOMS`)
 
-## Features
+## Current UI (as of latest main)
 
-### Living Room / Dining Room
-- API: `GET|POST /api/rooms/[slug]` (`living-room`, `dining-room`)
-- Master toggle + per-device on/off for lights/sockets
-- Mixed state → master turns **all off**
-- UI: `src/app/page.tsx` (`RoomCard`)
+- Multi-room light dashboard (Living Room, Dining Room, Master Bedroom, Maria Room, Ellie Room, Backyard, Front Yard)
+- API: `GET|POST /api/rooms/[slug]`
+- Master toggle + per-device on/off for `light` / `socket` with `onoff`
+- Mixed device state → master turns **all off**
+- Compact mobile layout in [`src/app/page.tsx`](src/app/page.tsx) + [`src/app/globals.css`](src/app/globals.css)
 
-### Garage open/close slider (important)
+**Note:** Garage slider was built earlier in this project lineage but is **not currently on `main`** (removed in a later rooms expansion). Re-add using the recipe below.
 
-**Purpose:** Third dashboard section; user slides to open or close the garage door.
+## Garage open/close slider (reuse this)
 
-**Homey devices (matched by exact name in `src/lib/homey.ts`):**
-| Role | Homey device name | Capability |
+### Homey devices (lookup by exact name)
+
+| Role | Device name | Capability / call |
 | --- | --- | --- |
-| Open action | `Open Garage Virtual` | `button` ← `PUT { "value": true }` |
-| Close action | `Close Garage Virtual` | `button` ← `PUT { "value": true }` |
-| Open/closed status | `Garage Door` | `alarm_motion` (true ≈ open) |
+| Open | `Open Garage Virtual` | `PUT /api/manager/devices/device/:id/capability/button` body `{"value":true}` |
+| Close | `Close Garage Virtual` | same `button` capability |
+| Status | `Garage Door` | read `alarm_motion` (true ≈ open; sensor can lag after command) |
 
-**Backend**
-- `getGarageState()` / `setGarageOpen(open: boolean)` in [`src/lib/homey.ts`](src/lib/homey.ts)
-- `GET|POST /api/garage` in [`src/app/api/garage/route.ts`](src/app/api/garage/route.ts)
-- POST body: `{ "open": true }` or `{ "open": false }`
-- After button press, sensor can lag; API returns requested `open` immediately
+Known IDs from last working integration (prefer name lookup; IDs may change if re-paired):
+- Open: `b8672c5b-683c-44af-9ab2-7b62a1e136d8`
+- Close: `c3d0b863-5e6e-4794-8407-6312befef44c`
+- Sensor: `75db5be7-af06-4a12-a7e2-94f6bfea048e`
 
-**Frontend slider** (`GarageCard` in [`src/app/page.tsx`](src/app/page.tsx))
-- `<input type="range" min={0} max={100}>` — 0 = closed, 100 = open
-- On release (`onPointerUp` / `onKeyUp`), `commit(value)`:
-  - `value >= 65` → open (call API if not already open)
-  - `value <= 35` → close (call API if not already closed)
-  - else snap back to current state
-- Styles: `.garage-slider` in [`src/app/globals.css`](src/app/globals.css)
-- Polls with rooms every 5s via `load()`
+### Backend pattern to restore
 
-**Extending the slider:** reuse the same snap-threshold pattern; keep open/close as separate Homey button devices unless a single cover/position capability appears.
+```ts
+// getGarageState(): { open, openDeviceId, closeDeviceId, sensorName }
+// setGarageOpen(open: boolean): press Open or Close virtual button, return state
+```
+
+- Route: `GET|POST /api/garage` (auth required)
+- POST body: `{ "open": true | false }`
+
+Reference commit that had the full implementation: `116de6c` / PR #5 (`cursor/garage-slider-4930`), files:
+- `src/lib/homey.ts` — `getGarageState`, `setGarageOpen`
+- `src/app/api/garage/route.ts`
+- `GarageCard` in `src/app/page.tsx`
+- `.garage-slider` styles in `src/app/globals.css`
+
+### Frontend slider behavior
+
+- `<input type="range" min={0} max={100}>` — `0` closed, `100` open
+- Local state follows drag; on **release** (`onPointerUp` / `onKeyUp`):
+  - `value >= 65` → call API open (if not already open), snap to 100
+  - `value <= 35` → call API close (if not already closed), snap to 0
+  - else snap back to current Homey/sensor state
+- Labels: Close (left) / Open (right); badge shows Open/Closed
+- Keep section compact for mobile (`grid-column: 1 / -1` under room cards)
+
+### Safety
+
+- Do not fire open/close while probing APIs unless intentional
+- After testing open, always send close if the door should not stay open
 
 ## Local / deploy
 
 ```bash
-cp .env.example .env.local   # fill HOMEY_URL, HOMEY_TOKEN, DASHBOARD_PASSWORD
+cp .env.example .env.local   # HOMEY_URL, HOMEY_TOKEN, DASHBOARD_PASSWORD
 npm install && npm run dev
-npx vercel deploy --prod     # project linked as tvlins/homey
+npx vercel deploy --prod     # project: tvlins/homey
 ```
 
-Do not put Homey secrets in git or client bundles. GitHub Pages is not suitable for this app.
+Never commit secrets. Do not use GitHub Pages for this app.
