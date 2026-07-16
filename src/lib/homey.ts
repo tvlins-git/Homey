@@ -148,52 +148,66 @@ export async function setLivingRoomDevicePower(
   return setRoomDevicePower("living-room", deviceId, on);
 }
 
-const OPEN_GARAGE_NAME = "Open Garage Virtual";
-const CLOSE_GARAGE_NAME = "Close Garage Virtual";
-const GARAGE_SENSOR_NAME = "Garage Door";
-
-export type GarageState = {
-  open: boolean;
-  sensorName: string;
-  openDeviceId: string;
-  closeDeviceId: string;
+type HomeyFlowRecord = {
+  id: string;
+  name: string;
+  enabled?: boolean;
+  triggerable?: boolean;
+  folder?: string | null;
 };
 
-async function getDevices() {
-  return homeyFetch<Record<string, HomeyDevice>>("/api/manager/devices/device");
+export type FlowKind = "flow" | "advancedflow";
+
+export type FlowSummary = {
+  id: string;
+  name: string;
+  kind: FlowKind;
+  folder: string | null;
+};
+
+function toSummaries(
+  records: Record<string, HomeyFlowRecord>,
+  kind: FlowKind,
+): FlowSummary[] {
+  return Object.values(records)
+    .filter((f) => f.enabled !== false && f.triggerable === true)
+    .map((f) => ({
+      id: f.id,
+      name: f.name,
+      kind,
+      folder: f.folder ?? null,
+    }));
 }
 
-function requireDevice(
-  devices: Record<string, HomeyDevice>,
-  name: string,
-): HomeyDevice {
-  const device = Object.values(devices).find((d) => d.name === name);
-  if (!device) throw new Error(`Homey device not found: ${name}`);
-  return device;
+/** Lists classic + advanced Homey flows that can be started manually. */
+export async function listTriggerableFlows(): Promise<FlowSummary[]> {
+  const [classic, advanced] = await Promise.all([
+    homeyFetch<Record<string, HomeyFlowRecord>>("/api/manager/flow/flow"),
+    homeyFetch<Record<string, HomeyFlowRecord>>(
+      "/api/manager/flow/advancedflow",
+    ),
+  ]);
+
+  return [...toSummaries(classic, "flow"), ...toSummaries(advanced, "advancedflow")].sort(
+    (a, b) => a.name.localeCompare(b.name),
+  );
 }
 
-export async function getGarageState(): Promise<GarageState> {
-  const devices = await getDevices();
-  const openBtn = requireDevice(devices, OPEN_GARAGE_NAME);
-  const closeBtn = requireDevice(devices, CLOSE_GARAGE_NAME);
-  const sensor = requireDevice(devices, GARAGE_SENSOR_NAME);
+export async function triggerFlow(
+  id: string,
+  kind: FlowKind,
+): Promise<FlowSummary> {
+  const flows = await listTriggerableFlows();
+  const flow = flows.find((f) => f.id === id && f.kind === kind);
+  if (!flow) {
+    throw new Error("Flow not found or not triggerable");
+  }
 
-  return {
-    open: Boolean(sensor.capabilitiesObj?.alarm_motion?.value),
-    sensorName: sensor.name,
-    openDeviceId: openBtn.id,
-    closeDeviceId: closeBtn.id,
-  };
-}
+  const path =
+    kind === "advancedflow"
+      ? `/api/manager/flow/advancedflow/${id}/trigger`
+      : `/api/manager/flow/flow/${id}/trigger`;
 
-export async function setGarageOpen(open: boolean): Promise<GarageState> {
-  const state = await getGarageState();
-  const deviceId = open ? state.openDeviceId : state.closeDeviceId;
-  await homeyFetch(`/api/manager/devices/device/${deviceId}/capability/button`, {
-    method: "PUT",
-    body: JSON.stringify({ value: true }),
-  });
-  // Sensor may lag; return requested intent with refreshed IDs
-  const refreshed = await getGarageState();
-  return { ...refreshed, open };
+  await homeyFetch(path, { method: "POST", body: "{}" });
+  return flow;
 }

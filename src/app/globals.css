@@ -239,79 +239,57 @@ h2 {
   text-align: center;
 }
 
-.garage {
+.flows {
   grid-column: 1 / -1;
 }
 
-.garage-badge {
+.flow-list {
+  list-style: none;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.flow-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.flow-name {
+  min-width: 0;
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-run {
   flex-shrink: 0;
-  min-width: 3.6rem;
-  text-align: center;
-  padding: 0.4rem 0.55rem;
-  border-radius: 999px;
+  font: inherit;
   font-size: 0.78rem;
   font-weight: 600;
-}
-
-.garage-badge.is-closed {
-  background: rgba(138, 148, 136, 0.22);
-  color: var(--off);
-}
-
-.garage-badge.is-open {
-  background: rgba(217, 164, 65, 0.28);
-  color: #6a4a10;
-}
-
-.garage-slider {
-  margin-top: 0.7rem;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-.garage-end {
-  font-size: 0.75rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.garage-slider input[type="range"] {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 2.2rem;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #c9d0c6 0%, #e8d4a0 50%, #e0a83a 100%);
-  outline: none;
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: var(--accent);
+  color: #fff;
   cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease;
 }
 
-.garage-slider input[type="range"]:disabled {
-  opacity: 0.65;
+.flow-run:hover:not(:disabled) {
+  transform: scale(1.04);
+}
+
+.flow-run:disabled {
   cursor: wait;
-}
-
-.garage-slider input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 1.85rem;
-  height: 1.85rem;
-  border-radius: 50%;
-  background: #fffdf8;
-  border: 2px solid rgba(28, 36, 28, 0.18);
-  box-shadow: 0 4px 12px rgba(28, 36, 28, 0.18);
-}
-
-.garage-slider input[type="range"]::-moz-range-thumb {
-  width: 1.85rem;
-  height: 1.85rem;
-  border-radius: 50%;
-  background: #fffdf8;
-  border: 2px solid rgba(28, 36, 28, 0.18);
-  box-shadow: 0 4px 12px rgba(28, 36, 28, 0.18);
+  opacity: 0.7;
 }
 
 @keyframes pulse {

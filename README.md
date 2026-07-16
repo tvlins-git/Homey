@@ -1,6 +1,6 @@
-# Homey Living Room dashboard
+# Homey home dashboard
 
-Very simple Next.js dashboard for **Living Room** and **Dining Room** lights. Homey credentials stay on the server — never in the browser bundle.
+Very simple Next.js dashboard for **Living Room** and **Dining Room** lights, plus **Flows** you can start from Homey. Homey credentials stay on the server — never in the browser bundle.
 
 ## Secrets (do not commit)
 
@@ -27,7 +27,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000), enter the dashboard password, then tap the Living Room button.
 
-The button toggles Living Room **lights** and **sockets** (not the TV).
+The room buttons toggle **lights** and **sockets** (not the TV). The **Flows** panel lists Homey flows marked triggerable (classic + advanced) and starts them via the Homey Flow API.
 
 ## What stays private
 
