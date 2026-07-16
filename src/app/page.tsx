@@ -26,27 +26,34 @@ function GarageCard({
   onSetOpen: (open: boolean) => void;
 }) {
   const [slider, setSlider] = useState(0);
+  /** After the user commits open/close, keep that position until they slide the other way. */
+  const [stickyOpen, setStickyOpen] = useState<boolean | null>(null);
+  const displayedOpen = stickyOpen ?? state?.open ?? false;
 
   useEffect(() => {
-    if (state) setSlider(state.open ? 100 : 0);
-  }, [state]);
+    // Only follow the sensor before the user has commanded a position.
+    if (!state || stickyOpen !== null) return;
+    setSlider(state.open ? 100 : 0);
+  }, [state, stickyOpen]);
 
   function commit(value: number) {
     if (!state || busy) {
-      setSlider(state?.open ? 100 : 0);
+      setSlider(displayedOpen ? 100 : 0);
       return;
     }
     if (value >= 65) {
       setSlider(100);
-      if (!state.open) onSetOpen(true);
+      setStickyOpen(true);
+      if (!displayedOpen) onSetOpen(true);
       return;
     }
     if (value <= 35) {
       setSlider(0);
-      if (state.open) onSetOpen(false);
+      setStickyOpen(false);
+      if (displayedOpen) onSetOpen(false);
       return;
     }
-    setSlider(state.open ? 100 : 0);
+    setSlider(displayedOpen ? 100 : 0);
   }
 
   return (
@@ -58,16 +65,16 @@ function GarageCard({
             {busy
               ? "Sending…"
               : state
-                ? state.open
+                ? displayedOpen
                   ? "Open · slide left to close"
                   : "Closed · slide right to open"
                 : "Loading…"}
           </p>
         </div>
         <span
-          className={`garage-badge ${state?.open ? "is-open" : "is-closed"}`}
+          className={`garage-badge ${displayedOpen ? "is-open" : "is-closed"}`}
         >
-          {state?.open ? "Open" : "Closed"}
+          {displayedOpen ? "Open" : "Closed"}
         </span>
       </div>
 
