@@ -12,6 +12,11 @@ type RoomState = {
   devices: { id: string; name: string; class: string; on: boolean }[];
 };
 
+type GarageState = {
+  open: boolean;
+  sensorName: string;
+};
+
 const ROOMS: { slug: RoomSlug; title: string }[] = [
   { slug: "living-room", title: "Living Room" },
   { slug: "dining-room", title: "Dining Room" },
@@ -87,37 +92,124 @@ function RoomCard({
   );
 }
 
+function GarageCard({
+  state,
+  busy,
+  onSetOpen,
+}: {
+  state: GarageState | null;
+  busy: boolean;
+  onSetOpen: (open: boolean) => void;
+}) {
+  const [slider, setSlider] = useState(0);
+
+  useEffect(() => {
+    if (state) setSlider(state.open ? 100 : 0);
+  }, [state]);
+
+  function commit(value: number) {
+    if (!state || busy) {
+      setSlider(state?.open ? 100 : 0);
+      return;
+    }
+    if (value >= 65) {
+      setSlider(100);
+      if (!state.open) onSetOpen(true);
+      return;
+    }
+    if (value <= 35) {
+      setSlider(0);
+      if (state.open) onSetOpen(false);
+      return;
+    }
+    setSlider(state.open ? 100 : 0);
+  }
+
+  return (
+    <section className="panel garage">
+      <div className="room-head">
+        <div className="room-title">
+          <h2>Garage</h2>
+          <p className="room-meta">
+            {busy
+              ? "Sending…"
+              : state
+                ? state.open
+                  ? "Open · slide left to close"
+                  : "Closed · slide right to open"
+                : "Loading…"}
+          </p>
+        </div>
+        <span className={`garage-badge ${state?.open ? "is-open" : "is-closed"}`}>
+          {state?.open ? "Open" : "Closed"}
+        </span>
+      </div>
+
+      <div className="garage-slider">
+        <span className="garage-end">Close</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={slider}
+          disabled={!state || busy}
+          aria-label="Garage door"
+          onChange={(e) => setSlider(Number(e.target.value))}
+          onPointerUp={(e) => commit(Number((e.target as HTMLInputElement).value))}
+          onKeyUp={(e) => commit(Number((e.target as HTMLInputElement).value))}
+        />
+        <span className="garage-end">Open</span>
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   const [needsLogin, setNeedsLogin] = useState(false);
   const [password, setPassword] = useState("");
   const [rooms, setRooms] = useState<Partial<Record<RoomSlug, RoomState>>>({});
+  const [garage, setGarage] = useState<GarageState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busySlug, setBusySlug] = useState<RoomSlug | null>(null);
   const [busyDeviceId, setBusyDeviceId] = useState<string | null>(null);
+  const [garageBusy, setGarageBusy] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
-    const results = await Promise.all(
-      ROOMS.map(async ({ slug }) => {
-        const res = await fetch(`/api/rooms/${slug}`);
-        return { slug, res, data: await res.json() };
-      }),
-    );
+    const [roomResults, garageRes] = await Promise.all([
+      Promise.all(
+        ROOMS.map(async ({ slug }) => {
+          const res = await fetch(`/api/rooms/${slug}`);
+          return { slug, res, data: await res.json() };
+        }),
+      ),
+      fetch("/api/garage"),
+    ]);
+    const garageData = await garageRes.json();
 
-    if (results.some((r) => r.res.status === 401)) {
+    if (
+      roomResults.some((r) => r.res.status === 401) ||
+      garageRes.status === 401
+    ) {
       setNeedsLogin(true);
       setRooms({});
+      setGarage(null);
       return;
     }
 
     const next: Partial<Record<RoomSlug, RoomState>> = {};
-    for (const { slug, res, data } of results) {
+    for (const { slug, res, data } of roomResults) {
       if (!res.ok) {
         setError(data.error ?? `Failed to load ${slug}`);
         continue;
       }
       next[slug] = data;
+    }
+    if (!garageRes.ok) {
+      setError(garageData.error ?? "Failed to load Garage");
+    } else {
+      setGarage(garageData);
     }
     setNeedsLogin(false);
     setRooms(next);
@@ -199,6 +291,28 @@ export default function Home() {
     }
   }
 
+  async function setGarageOpen(open: boolean) {
+    if (garageBusy) return;
+    setGarageBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/garage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ open }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Garage command failed");
+        await load();
+        return;
+      }
+      setGarage(data);
+    } finally {
+      setGarageBusy(false);
+    }
+  }
+
   return (
     <main className="page">
       <div className="glow" aria-hidden />
@@ -238,6 +352,11 @@ export default function Home() {
                 }
               />
             ))}
+            <GarageCard
+              state={garage}
+              busy={garageBusy}
+              onSetOpen={(open) => void setGarageOpen(open)}
+            />
           </div>
         )}
 
