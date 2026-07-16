@@ -116,7 +116,16 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busySlug, setBusySlug] = useState<RoomSlug | null>(null);
   const [busyDeviceId, setBusyDeviceId] = useState<string | null>(null);
+  const [homeBusy, setHomeBusy] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
+
+  const loadedRooms = ROOMS.map(({ slug }) => rooms[slug]).filter(
+    (room): room is RoomState => Boolean(room),
+  );
+  const anyRoomOn = loadedRooms.some((room) => room.on || room.mixed);
+  const allRoomsOn =
+    loadedRooms.length > 0 && loadedRooms.every((room) => room.on && !room.mixed);
+  const roomsReady = loadedRooms.length === ROOMS.length;
 
   const load = useCallback(async () => {
     setError(null);
@@ -175,7 +184,7 @@ export default function Home() {
 
   async function toggleMaster(slug: RoomSlug) {
     const state = rooms[slug];
-    if (!state || busySlug) return;
+    if (!state || busySlug || homeBusy) return;
     const nextOn = state.mixed || state.on ? false : true;
     setBusySlug(slug);
     setError(null);
@@ -196,12 +205,42 @@ export default function Home() {
     }
   }
 
+  async function setAllRoomsPower(on: boolean) {
+    if (!roomsReady || homeBusy || busySlug || busyDeviceId) return;
+    setHomeBusy(true);
+    setError(null);
+    try {
+      const results = await Promise.all(
+        ROOMS.map(async ({ slug }) => {
+          const res = await fetch(`/api/rooms/${slug}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ on }),
+          });
+          return { slug, res, data: await res.json() };
+        }),
+      );
+
+      const next: Partial<Record<RoomSlug, RoomState>> = { ...rooms };
+      for (const { slug, res, data } of results) {
+        if (!res.ok) {
+          setError(data.error ?? "Home toggle failed");
+          continue;
+        }
+        next[slug] = data;
+      }
+      setRooms(next);
+    } finally {
+      setHomeBusy(false);
+    }
+  }
+
   async function toggleDevice(
     slug: RoomSlug,
     deviceId: string,
     currentlyOn: boolean,
   ) {
-    if (busySlug || busyDeviceId) return;
+    if (busySlug || busyDeviceId || homeBusy) return;
     setBusyDeviceId(deviceId);
     setError(null);
     try {
@@ -246,21 +285,61 @@ export default function Home() {
             </form>
           </section>
         ) : (
-          <div className="rooms">
-            {ROOMS.map(({ slug, title }) => (
-              <RoomCard
-                key={slug}
-                title={title}
-                state={rooms[slug] ?? null}
-                busy={busySlug === slug}
-                busyDeviceId={busyDeviceId}
-                onToggleMaster={() => void toggleMaster(slug)}
-                onToggleDevice={(deviceId, currentlyOn) =>
-                  void toggleDevice(slug, deviceId, currentlyOn)
-                }
-              />
-            ))}
-          </div>
+          <>
+            <section className="home-master" aria-label="All rooms">
+              <span className="home-master-label">
+                {homeBusy
+                  ? "Updating…"
+                  : !roomsReady
+                    ? "Loading…"
+                    : allRoomsOn
+                      ? "All on"
+                      : anyRoomOn
+                        ? "Mixed"
+                        : "All off"}
+              </span>
+              <div className="home-master-actions">
+                <button
+                  type="button"
+                  className={`home-power${allRoomsOn ? " is-active" : ""}`}
+                  disabled={
+                    !roomsReady || homeBusy || busySlug !== null || allRoomsOn
+                  }
+                  onClick={() => void setAllRoomsPower(true)}
+                >
+                  On
+                </button>
+                <button
+                  type="button"
+                  className={`home-power${
+                    roomsReady && !anyRoomOn ? " is-active" : ""
+                  }`}
+                  disabled={
+                    !roomsReady || homeBusy || busySlug !== null || !anyRoomOn
+                  }
+                  onClick={() => void setAllRoomsPower(false)}
+                >
+                  Off
+                </button>
+              </div>
+            </section>
+
+            <div className="rooms">
+              {ROOMS.map(({ slug, title }) => (
+                <RoomCard
+                  key={slug}
+                  title={title}
+                  state={rooms[slug] ?? null}
+                  busy={busySlug === slug || homeBusy}
+                  busyDeviceId={busyDeviceId}
+                  onToggleMaster={() => void toggleMaster(slug)}
+                  onToggleDevice={(deviceId, currentlyOn) =>
+                    void toggleDevice(slug, deviceId, currentlyOn)
+                  }
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {error && <p className="error">{error}</p>}

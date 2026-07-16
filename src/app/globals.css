@@ -79,6 +79,57 @@ h1 {
   letter-spacing: -0.03em;
 }
 
+.home-master {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.85rem;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 18px rgba(28, 36, 28, 0.08);
+}
+
+.home-master-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.home-master-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.home-power {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  min-width: 2.6rem;
+  padding: 0.3rem 0.65rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(138, 148, 136, 0.18);
+  color: var(--off);
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.home-power:hover:not(:disabled) {
+  transform: scale(1.04);
+}
+
+.home-power:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.home-power.is-active {
+  background: rgba(217, 164, 65, 0.28);
+  color: #6a4a10;
+  opacity: 1;
+}
+
 .rooms {
   display: grid;
   gap: 0.65rem;
