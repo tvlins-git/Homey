@@ -1,8 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useId, useState } from "react";
-
-type RoomSlug = "living-room" | "dining-room" | "master-bedroom";
+import { ROOMS, type RoomSlug } from "@/lib/rooms";
 
 type RoomState = {
   slug: RoomSlug;
@@ -11,12 +10,6 @@ type RoomState = {
   mixed: boolean;
   devices: { id: string; name: string; class: string; on: boolean }[];
 };
-
-const ROOMS: { slug: RoomSlug; title: string }[] = [
-  { slug: "living-room", title: "Living Room" },
-  { slug: "dining-room", title: "Dining Room" },
-  { slug: "master-bedroom", title: "Master Bedroom" },
-];
 
 function RoomCard({
   title,
