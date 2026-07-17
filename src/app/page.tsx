@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useId, useState } from "react";
 import { ROOMS, type RoomSlug } from "@/lib/rooms";
+import { APP_VERSION } from "@/lib/version";
 
 type RoomState = {
   slug: RoomSlug;
@@ -494,6 +495,10 @@ export default function Home() {
         )}
 
         {error && <p className="error">{error}</p>}
+
+        <p className="app-version" aria-label={`App version ${APP_VERSION}`}>
+          v{APP_VERSION}
+        </p>
       </div>
     </main>
   );
