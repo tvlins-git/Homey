@@ -34,10 +34,17 @@ Geofence center (first match):
 1. `HOME_LAT` / `HOME_LNG` env
 2. Homey Settings → Location (`GET /api/manager/geolocation/option/location`)
 
+Default radius is **50 m** (`HOME_RADIUS_M`).
+
+Refresh cadence (browser tab open):
+- Dashboard state (rooms/garage/me): every **5 s** (reuses last GPS fix)
+- GPS / geofence coords: every **60 s** (or immediately via **Share location**)
+
 - If neither IP nor geofence is available → home check **disabled** (`home: true`) so local/dev is not bricked
 - iOS Safari: no WiFi/SSID APIs. **iCloud Private Relay** (`2a09:bac3:…`) hides the home WAN IP even on home Wi‑Fi — IP match fails and the UI prompts for **Share location**
 - Routes: `GET|POST /api/home`; GETs may use `?lat=&lng=`; control POSTs may include `{ lat, lng }`
-- Response includes `clientIp`, `proxied`, `geoConfigured` for debugging
+- Response includes `clientIp`, `proxied`, `geoConfigured`, `radiusM` for debugging
+- Note: if `reason` is `ip`, leaving the house while still on home WAN (or a matching IP) stays **Home** until the IP no longer matches — geo is only used when IP does not match
 
 ## Multi-user ACL
 
