@@ -843,12 +843,11 @@ export default function Home() {
         ? "Home"
         : "Away";
 
-  const showLocationCta =
+  const showAwayBanner =
     Boolean(user) &&
     Boolean(homeInfo) &&
     homeInfo?.reason !== "disabled" &&
-    !homeInfo?.home &&
-    Boolean(homeInfo?.geoConfigured);
+    !homeInfo?.home;
 
   return (
     <main className="page">
@@ -874,23 +873,28 @@ export default function Home() {
           )}
         </header>
 
-        {showLocationCta && (
+        {showAwayBanner && (
           <div className="home-away-banner" role="status">
             <p>
               {homeInfo?.proxied
-                ? "iCloud Private Relay hides your home Wi‑Fi IP. Share location to confirm you’re home."
-                : "Not on the home IP. Share location to confirm you’re home."}
+                ? "iCloud Private Relay hides your home Wi‑Fi IP."
+                : "Not on the home WAN IP."}
+              {homeInfo?.geoConfigured
+                ? " Share location to confirm you’re home."
+                : " Set HOME_LAT/HOME_LNG (or Homey → Settings → Location) so location can prove home."}
             </p>
-            <button
-              type="button"
-              className="locate-btn"
-              disabled={geoBusy}
-              onClick={() => void requestHomeLocation().then((pos) => {
-                if (pos) void load();
-              })}
-            >
-              {geoBusy ? "Locating…" : "Share location"}
-            </button>
+            {homeInfo?.geoConfigured && (
+              <button
+                type="button"
+                className="locate-btn"
+                disabled={geoBusy}
+                onClick={() => void requestHomeLocation().then((pos) => {
+                  if (pos) void load();
+                })}
+              >
+                {geoBusy ? "Locating…" : "Share location"}
+              </button>
+            )}
             {geoHint && <p className="home-away-hint">{geoHint}</p>}
           </div>
         )}
