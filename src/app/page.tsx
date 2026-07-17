@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useId, useState } from "react";
+import { FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { ROOMS, type RoomSlug } from "@/lib/rooms";
 import { APP_VERSION } from "@/lib/version";
 
@@ -18,79 +18,59 @@ type GarageState = {
 };
 
 function GarageCard({
-  state,
+  displayOpen,
+  pending,
   busy,
   onSetOpen,
 }: {
-  state: GarageState | null;
+  displayOpen: boolean;
+  pending: boolean;
   busy: boolean;
   onSetOpen: (open: boolean) => void;
 }) {
   const [slider, setSlider] = useState(0);
-  /**
-   * After the user commits open/close, keep that visual until Better Logic
-   * `isGarageOpen` catches up (often 15–30s), then follow the variable again.
-   */
-  const [stickyOpen, setStickyOpen] = useState<boolean | null>(null);
-  const pending = stickyOpen !== null && state !== null && stickyOpen !== state.open;
-  const displayedOpen = stickyOpen ?? state?.open ?? false;
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
-    if (!state) return;
-    // Variable confirmed the commanded state — drop sticky and follow Homey again.
-    if (stickyOpen !== null && stickyOpen === state.open) {
-      setStickyOpen(null);
-      setSlider(state.open ? 100 : 0);
-      return;
-    }
-    if (stickyOpen !== null) {
-      setSlider(stickyOpen ? 100 : 0);
-      return;
-    }
-    setSlider(state.open ? 100 : 0);
-  }, [state, stickyOpen]);
+    if (!dragging) setSlider(displayOpen ? 100 : 0);
+  }, [displayOpen, dragging]);
 
   function commit(value: number) {
-    if (!state || busy) {
-      setSlider(displayedOpen ? 100 : 0);
+    setDragging(false);
+    if (busy) {
+      setSlider(displayOpen ? 100 : 0);
       return;
     }
     if (value >= 65) {
       setSlider(100);
-      setStickyOpen(true);
-      if (!displayedOpen) onSetOpen(true);
+      if (!displayOpen) onSetOpen(true);
       return;
     }
     if (value <= 35) {
       setSlider(0);
-      setStickyOpen(false);
-      if (displayedOpen) onSetOpen(false);
+      if (displayOpen) onSetOpen(false);
       return;
     }
-    setSlider(displayedOpen ? 100 : 0);
+    setSlider(displayOpen ? 100 : 0);
   }
 
-  const badgeLabel = !state
-    ? "…"
-    : pending
-      ? displayedOpen
-        ? "Opening"
-        : "Closing"
-      : displayedOpen
-        ? "Open"
-        : "Closed";
+  const badgeLabel = pending
+    ? displayOpen
+      ? "Opening"
+      : "Closing"
+    : displayOpen
+      ? "Open"
+      : "Closed";
 
   const metaLabel = busy
     ? "Sending…"
-    : !state
-      ? "Loading…"
-      : pending
-        ? displayedOpen
-          ? "Opening… waiting for Homey"
-          : "Closing… waiting for Homey"
-        : displayedOpen
-          ? "Open · slide left to close"
-          : "Closed · slide right to open";
+    : pending
+      ? displayOpen
+        ? "Opening… waiting for Homey"
+        : "Closing… waiting for Homey"
+      : displayOpen
+        ? "Open · slide left to close"
+        : "Closed · slide right to open";
 
   return (
     <section className="panel garage">
@@ -100,7 +80,7 @@ function GarageCard({
           <p className="room-meta">{metaLabel}</p>
         </div>
         <span
-          className={`garage-badge ${displayedOpen ? "is-open" : "is-closed"}`}
+          className={`garage-badge ${displayOpen ? "is-open" : "is-closed"}`}
         >
           {badgeLabel}
         </span>
@@ -113,9 +93,13 @@ function GarageCard({
           min={0}
           max={100}
           value={slider}
-          disabled={!state || busy}
+          disabled={busy}
           aria-label="Garage door"
-          onChange={(e) => setSlider(Number(e.target.value))}
+          onChange={(e) => {
+            setDragging(true);
+            setSlider(Number(e.target.value));
+          }}
+          onPointerDown={() => setDragging(true)}
           onPointerUp={(e) =>
             commit(Number((e.target as HTMLInputElement).value))
           }
@@ -225,6 +209,11 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [rooms, setRooms] = useState<Partial<Record<RoomSlug, RoomState>>>({});
   const [garage, setGarage] = useState<GarageState | null>(null);
+  /** Commanded open/close until Better Logic `isGarageOpen` confirms (15–30s). */
+  const [garagePendingOpen, setGaragePendingOpen] = useState<boolean | null>(
+    null,
+  );
+  const garagePendingSinceRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [busySlug, setBusySlug] = useState<RoomSlug | null>(null);
   const [busyDeviceId, setBusyDeviceId] = useState<string | null>(null);
@@ -239,6 +228,22 @@ export default function Home() {
   const allRoomsOn =
     loadedRooms.length > 0 && loadedRooms.every((room) => room.on && !room.mixed);
   const roomsReady = loadedRooms.length === ROOMS.length;
+
+  const garageDisplayOpen = garagePendingOpen ?? garage?.open ?? false;
+  const garagePending =
+    garagePendingOpen !== null &&
+    garage !== null &&
+    garagePendingOpen !== garage.open;
+
+  function clearGaragePendingIfConfirmed(nextOpen: boolean) {
+    setGaragePendingOpen((pending) => {
+      if (pending === null) return null;
+      if (nextOpen !== pending) return pending;
+      const elapsed = Date.now() - garagePendingSinceRef.current;
+      if (elapsed >= 15_000) return null;
+      return pending;
+    });
+  }
 
   const load = useCallback(async () => {
     setError(null);
@@ -275,6 +280,7 @@ export default function Home() {
       setError(garageData.error ?? "Failed to load Garage");
     } else {
       setGarage(garageData);
+      clearGaragePendingIfConfirmed(Boolean(garageData.open));
     }
     setNeedsLogin(false);
     setRooms(next);
@@ -388,6 +394,8 @@ export default function Home() {
 
   async function setGarageDoor(open: boolean) {
     if (garageBusy || homeBusy || busySlug || busyDeviceId) return;
+    setGaragePendingOpen(open);
+    garagePendingSinceRef.current = Date.now();
     setGarageBusy(true);
     setError(null);
     try {
@@ -399,9 +407,11 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Garage command failed");
+        setGaragePendingOpen(null);
         return;
       }
       setGarage(data);
+      clearGaragePendingIfConfirmed(Boolean(data.open));
     } finally {
       setGarageBusy(false);
     }
@@ -473,8 +483,9 @@ export default function Home() {
 
             <div className="rooms">
               <GarageCard
-                state={garage}
-                busy={garageBusy}
+                displayOpen={garageDisplayOpen}
+                pending={garagePending}
+                busy={garageBusy || !garage}
                 onSetOpen={(open) => void setGarageDoor(open)}
               />
               {ROOMS.map(({ slug, title }) => (
