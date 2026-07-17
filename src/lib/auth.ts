@@ -9,7 +9,7 @@ function expectedToken(password: string): string {
 
 export async function isAuthenticated(): Promise<boolean> {
   const password = process.env.DASHBOARD_PASSWORD;
-  if (!password) return true;
+  if (!password) return false;
   const jar = await cookies();
   const value = jar.get(COOKIE_NAME)?.value;
   if (!value) return false;

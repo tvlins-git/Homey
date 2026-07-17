@@ -4,7 +4,10 @@ import { COOKIE_NAME, sessionCookieValue } from "@/lib/auth";
 export async function POST(request: Request) {
   const password = process.env.DASHBOARD_PASSWORD;
   if (!password) {
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(
+      { error: "Dashboard authentication is not configured" },
+      { status: 503 },
+    );
   }
 
   const body = (await request.json().catch(() => null)) as { password?: string } | null;
