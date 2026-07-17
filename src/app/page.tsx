@@ -304,12 +304,109 @@ function RoomCard({
   );
 }
 
+function AccountPanel() {
+  const [open, setOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
+  async function changePassword(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setOk(null);
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Password update failed");
+        return;
+      }
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setOk("Password updated");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel admin-panel">
+      <button
+        type="button"
+        className="admin-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <h2>Change password</h2>
+        <span className="chevron" aria-hidden>
+          ▾
+        </span>
+      </button>
+
+      {open && (
+        <div className="admin-body">
+          <form className="admin-create" onSubmit={changePassword}>
+            <input
+              type="password"
+              placeholder="Current password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            <input
+              type="password"
+              placeholder="New password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+            <input
+              type="password"
+              placeholder="Confirm new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+            <button
+              type="submit"
+              disabled={
+                busy || !currentPassword || !newPassword || !confirmPassword
+              }
+            >
+              Update password
+            </button>
+          </form>
+          {ok && <p className="ok">{ok}</p>}
+          {error && <p className="error">{error}</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function AdminPanel() {
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>(
+    {},
+  );
   const [open, setOpen] = useState(false);
 
   const loadUsers = useCallback(async () => {
@@ -331,6 +428,7 @@ function AdminPanel() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setOk(null);
     try {
       const res = await fetch("/api/admin/users", {
         method: "POST",
@@ -357,6 +455,7 @@ function AdminPanel() {
   async function setMode(userId: string, group: GroupId, mode: AccessMode) {
     setBusy(true);
     setError(null);
+    setOk(null);
     try {
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
@@ -374,10 +473,43 @@ function AdminPanel() {
     }
   }
 
+  async function resetPassword(userId: string, username: string) {
+    const password = passwordDrafts[userId]?.trim() ?? "";
+    if (!password) {
+      setError("Enter a new password first");
+      return;
+    }
+    if (!confirm(`Reset password for ${username}?`)) return;
+    setBusy(true);
+    setError(null);
+    setOk(null);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: userId, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Password reset failed");
+        return;
+      }
+      setPasswordDrafts((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      setOk(`Password updated for ${username}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function removeUser(userId: string) {
     if (!confirm("Delete this user?")) return;
     setBusy(true);
     setError(null);
+    setOk(null);
     try {
       const res = await fetch("/api/admin/users", {
         method: "DELETE",
@@ -449,6 +581,28 @@ function AdminPanel() {
                   </button>
                 )}
               </div>
+              <div className="admin-password-row">
+                <input
+                  type="password"
+                  placeholder="New password"
+                  value={passwordDrafts[user.id] ?? ""}
+                  onChange={(e) =>
+                    setPasswordDrafts((prev) => ({
+                      ...prev,
+                      [user.id]: e.target.value,
+                    }))
+                  }
+                  autoComplete="new-password"
+                  disabled={busy}
+                />
+                <button
+                  type="button"
+                  disabled={busy || !(passwordDrafts[user.id] ?? "").trim()}
+                  onClick={() => void resetPassword(user.id, user.username)}
+                >
+                  Set password
+                </button>
+              </div>
               <div className="admin-acl">
                 {GROUPS.map((g) => (
                   <label key={g.id} className="admin-acl-row">
@@ -480,6 +634,7 @@ function AdminPanel() {
             </div>
           ))}
 
+          {ok && <p className="ok">{ok}</p>}
           {error && <p className="error">{error}</p>}
         </div>
       )}
@@ -1034,6 +1189,7 @@ export default function Home() {
               <p className="empty-state">No controls available</p>
             )}
 
+            {user && user.id !== "dev" && <AccountPanel />}
             {user?.role === "admin" && <AdminPanel />}
           </>
         )}

@@ -18,10 +18,11 @@ Repo: `tvlins-git/Homey` (deploys from `main` via Vercel).
 ## Current UI
 
 - Multi-user login; admin panel for per-group access (`always` / `home` / `never`)
+- Password updates: any user can change their own (`PATCH /api/me`); admins can reset any user (`PATCH /api/admin/users` with `password`)
 - Dashboard shows only groups the current user may control given home/away
 - Garage slider **above** Living Room (open/close via Homey flows)
 - Multi-room light dashboard (Living Room, Dining Room, Master Bedroom, Maria room, Ellie room, Backyard, Frontyard)
-- API: `GET|POST /api/rooms/[slug]`, `GET|POST /api/garage`, `GET/POST /api/home`, `GET/POST /api/me`, `GET/POST/PATCH/DELETE /api/admin/users`
+- API: `GET|POST /api/rooms/[slug]`, `GET|POST /api/garage`, `GET/POST /api/home`, `GET/POST/PATCH /api/me`, `GET/POST/PATCH/DELETE /api/admin/users`
 - Master toggle + per-device on/off for `light` / `socket` with `onoff`
 - Mixed device state → master turns **all off**
 - Compact mobile layout in [`src/app/page.tsx`](src/app/page.tsx) + [`src/app/globals.css`](src/app/globals.css)
@@ -56,8 +57,8 @@ Per user, per group (`garage` + room slugs), one mode:
 | `home` | Control only when home |
 | `never` | No access (default for new users) |
 
-- Seed admin from `ADMIN_USERNAME` + `ADMIN_PASSWORD` (or legacy `DASHBOARD_PASSWORD`)
-- Admin gets all groups `always` and can manage users in the UI
+- Seed admin from `ADMIN_USERNAME` + `ADMIN_PASSWORD` (or legacy `DASHBOARD_PASSWORD`) — seed runs only when the user store is empty; changing the env password later does **not** update existing hashes
+- Admin gets all groups `always` and can manage users in the UI (including Set password)
 - Persist users in Upstash (`KV_REST_API_URL` / `KV_REST_API_TOKEN`); in-memory if unset (dev only)
 
 ## Garage open/close slider
