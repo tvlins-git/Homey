@@ -1,6 +1,6 @@
 {
   "name": "homey-app",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@upstash/redis": "^1.38.0",
     "next": "^16.2.10",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

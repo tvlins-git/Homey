@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
+import { ACCESS_MODES, type AccessMode } from "@/lib/acl";
+import { GROUPS, type GroupId } from "@/lib/groups";
 import { ROOMS, type RoomSlug } from "@/lib/rooms";
 import { APP_VERSION } from "@/lib/version";
 
@@ -17,15 +19,57 @@ type GarageState = {
   statusVariable: string;
 };
 
+type HomeCoords = { lat: number; lng: number };
+
+type HomeInfo = {
+  home: boolean;
+  reason: string;
+  geoConfigured?: boolean;
+  configured?: boolean;
+};
+
+type MeUser = {
+  id: string;
+  username: string;
+  role: "admin" | "user";
+};
+
+type AllowedGroup = { id: GroupId; title: string; mode: AccessMode };
+
+type AdminUserRow = {
+  user: MeUser;
+  acl: Record<GroupId, AccessMode>;
+};
+
+function getGeolocation(): Promise<HomeCoords | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        resolve({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 60_000 },
+    );
+  });
+}
+
 function GarageCard({
   displayOpen,
   pending,
   busy,
+  locked,
   onSetOpen,
 }: {
   displayOpen: boolean;
   pending: boolean;
   busy: boolean;
+  locked: boolean;
   onSetOpen: (open: boolean) => void;
 }) {
   const [slider, setSlider] = useState(0);
@@ -37,7 +81,7 @@ function GarageCard({
 
   function commit(value: number) {
     setDragging(false);
-    if (busy) {
+    if (busy || locked) {
       setSlider(displayOpen ? 100 : 0);
       return;
     }
@@ -62,15 +106,17 @@ function GarageCard({
       ? "Open"
       : "Closed";
 
-  const metaLabel = busy
-    ? "Sending…"
-    : pending
-      ? displayOpen
-        ? "Opening… waiting for Homey"
-        : "Closing… waiting for Homey"
-      : displayOpen
-        ? "Open · slide left to close"
-        : "Closed · slide right to open";
+  const metaLabel = locked
+    ? "Available at home"
+    : busy
+      ? "Sending…"
+      : pending
+        ? displayOpen
+          ? "Opening… waiting for Homey"
+          : "Closing… waiting for Homey"
+        : displayOpen
+          ? "Open · slide left to close"
+          : "Closed · slide right to open";
 
   return (
     <section className="panel garage">
@@ -93,7 +139,7 @@ function GarageCard({
           min={0}
           max={100}
           value={slider}
-          disabled={busy}
+          disabled={busy || locked}
           aria-label="Garage door"
           onChange={(e) => {
             setDragging(true);
@@ -180,11 +226,7 @@ function RoomCard({
       </div>
 
       {state && deviceCount > 0 && (
-        <ul
-          id={devicesId}
-          className="devices"
-          hidden={!open}
-        >
+        <ul id={devicesId} className="devices" hidden={!open}>
           {state.devices.map((d) => (
             <li key={d.id}>
               <span>{d.name}</span>
@@ -204,16 +246,204 @@ function RoomCard({
   );
 }
 
+function AdminPanel() {
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const loadUsers = useCallback(async () => {
+    const res = await fetch("/api/admin/users");
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error ?? "Failed to load users");
+      return;
+    }
+    setUsers(data.users);
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    if (open) void loadUsers();
+  }, [open, loadUsers]);
+
+  async function create(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: newUsername,
+          password: newPassword,
+          role: "user",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Create failed");
+        return;
+      }
+      setNewUsername("");
+      setNewPassword("");
+      await loadUsers();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setMode(userId: string, group: GroupId, mode: AccessMode) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: userId, acl: { [group]: mode } }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Update failed");
+        return;
+      }
+      await loadUsers();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeUser(userId: string) {
+    if (!confirm("Delete this user?")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: userId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Delete failed");
+        return;
+      }
+      await loadUsers();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel admin-panel">
+      <button
+        type="button"
+        className="admin-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <h2>Users & access</h2>
+        <span className="chevron" aria-hidden>
+          ▾
+        </span>
+      </button>
+
+      {open && (
+        <div className="admin-body">
+          <form className="admin-create" onSubmit={create}>
+            <input
+              placeholder="Username"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              autoComplete="off"
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+            <button
+              type="submit"
+              disabled={busy || !newUsername || !newPassword}
+            >
+              Add user
+            </button>
+          </form>
+
+          {users.map(({ user, acl }) => (
+            <div key={user.id} className="admin-user">
+              <div className="admin-user-head">
+                <strong>{user.username}</strong>
+                <span className="admin-role">{user.role}</span>
+                {user.role !== "admin" && (
+                  <button
+                    type="button"
+                    className="admin-delete"
+                    disabled={busy}
+                    onClick={() => void removeUser(user.id)}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+              <div className="admin-acl">
+                {GROUPS.map((g) => (
+                  <label key={g.id} className="admin-acl-row">
+                    <span>{g.title}</span>
+                    <select
+                      value={acl[g.id] ?? "never"}
+                      disabled={busy || user.role === "admin"}
+                      onChange={(e) =>
+                        void setMode(
+                          user.id,
+                          g.id,
+                          e.target.value as AccessMode,
+                        )
+                      }
+                    >
+                      {ACCESS_MODES.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {mode === "always"
+                            ? "Always"
+                            : mode === "home"
+                              ? "Home only"
+                              : "Never"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {error && <p className="error">{error}</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Home() {
   const [needsLogin, setNeedsLogin] = useState(false);
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [user, setUser] = useState<MeUser | null>(null);
+  const [homeInfo, setHomeInfo] = useState<HomeInfo | null>(null);
+  const [allowedGroups, setAllowedGroups] = useState<AllowedGroup[]>([]);
+  const [coords, setCoords] = useState<HomeCoords | null>(null);
   const [rooms, setRooms] = useState<Partial<Record<RoomSlug, RoomState>>>({});
   const [garage, setGarage] = useState<GarageState | null>(null);
-  /** Commanded open/close until Better Logic `isGarageOpen` confirms (15–30s). */
   const [garagePendingOpen, setGaragePendingOpen] = useState<boolean | null>(
     null,
   );
   const garagePendingSinceRef = useRef(0);
+  const geoTriedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [busySlug, setBusySlug] = useState<RoomSlug | null>(null);
   const [busyDeviceId, setBusyDeviceId] = useState<string | null>(null);
@@ -221,13 +451,21 @@ export default function Home() {
   const [garageBusy, setGarageBusy] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
 
-  const loadedRooms = ROOMS.map(({ slug }) => rooms[slug]).filter(
-    (room): room is RoomState => Boolean(room),
-  );
+  const allowedRoomSlugs = allowedGroups
+    .filter((g) => g.id !== "garage")
+    .map((g) => g.id as RoomSlug);
+  const garageAllowed = allowedGroups.some((g) => g.id === "garage");
+
+  const loadedRooms = allowedRoomSlugs
+    .map((slug) => rooms[slug])
+    .filter((room): room is RoomState => Boolean(room));
   const anyRoomOn = loadedRooms.some((room) => room.on || room.mixed);
   const allRoomsOn =
-    loadedRooms.length > 0 && loadedRooms.every((room) => room.on && !room.mixed);
-  const roomsReady = loadedRooms.length === ROOMS.length;
+    loadedRooms.length > 0 &&
+    loadedRooms.every((room) => room.on && !room.mixed);
+  const roomsReady =
+    allowedRoomSlugs.length === 0 ||
+    loadedRooms.length === allowedRoomSlugs.length;
 
   const garageDisplayOpen = garagePendingOpen ?? garage?.open ?? false;
   const garagePending =
@@ -245,23 +483,78 @@ export default function Home() {
     });
   }
 
+  const refreshMe = useCallback(async (withCoords?: HomeCoords | null) => {
+    const res = withCoords
+      ? await fetch("/api/me", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(withCoords),
+        })
+      : await fetch("/api/me");
+    const data = await res.json();
+    if (res.status === 401) {
+      setNeedsLogin(true);
+      setUser(null);
+      setAllowedGroups([]);
+      return null;
+    }
+    if (!res.ok) {
+      setError(data.error ?? "Failed to load session");
+      return null;
+    }
+    setNeedsLogin(false);
+    setUser(data.user);
+    setHomeInfo(data.home);
+    setAllowedGroups(data.groups ?? []);
+    return data as {
+      user: MeUser;
+      home: HomeInfo;
+      groups: AllowedGroup[];
+    };
+  }, []);
+
   const load = useCallback(async () => {
     setError(null);
+
+    let me = await refreshMe(coords);
+    if (!me) {
+      setRooms({});
+      setGarage(null);
+      return;
+    }
+
+    // If away and geofence configured, try browser location once
+    if (!me.home.home && me.home.geoConfigured && !coords && !geoTriedRef.current) {
+      geoTriedRef.current = true;
+      const pos = await getGeolocation();
+      if (pos) {
+        setCoords(pos);
+        me = await refreshMe(pos);
+        if (!me) {
+          setRooms({});
+          setGarage(null);
+          return;
+        }
+      }
+    }
+
+    const groups: AllowedGroup[] = me.groups ?? [];
+    const roomSlugs = groups
+      .filter((g) => g.id !== "garage")
+      .map((g) => g.id as RoomSlug);
+    const includeGarage = groups.some((g) => g.id === "garage");
+
     const [roomResults, garageRes] = await Promise.all([
       Promise.all(
-        ROOMS.map(async ({ slug }) => {
+        roomSlugs.map(async (slug) => {
           const res = await fetch(`/api/rooms/${slug}`);
           return { slug, res, data: await res.json() };
         }),
       ),
-      fetch("/api/garage"),
+      includeGarage ? fetch("/api/garage") : Promise.resolve(null),
     ]);
-    const garageData = await garageRes.json();
 
-    if (
-      roomResults.some((r) => r.res.status === 401) ||
-      garageRes.status === 401
-    ) {
+    if (roomResults.some((r) => r.res.status === 401)) {
       setNeedsLogin(true);
       setRooms({});
       setGarage(null);
@@ -271,20 +564,33 @@ export default function Home() {
     const next: Partial<Record<RoomSlug, RoomState>> = {};
     for (const { slug, res, data } of roomResults) {
       if (!res.ok) {
-        setError(data.error ?? `Failed to load ${slug}`);
+        if (res.status !== 403) setError(data.error ?? `Failed to load ${slug}`);
         continue;
       }
       next[slug] = data;
     }
-    if (!garageRes.ok) {
-      setError(garageData.error ?? "Failed to load Garage");
-    } else {
-      setGarage(garageData);
-      clearGaragePendingIfConfirmed(Boolean(garageData.open));
-    }
-    setNeedsLogin(false);
     setRooms(next);
-  }, []);
+
+    if (garageRes) {
+      const garageData = await garageRes.json();
+      if (garageRes.status === 401) {
+        setNeedsLogin(true);
+        setGarage(null);
+        return;
+      }
+      if (!garageRes.ok) {
+        if (garageRes.status !== 403) {
+          setError(garageData.error ?? "Failed to load Garage");
+        }
+        setGarage(null);
+      } else {
+        setGarage(garageData);
+        clearGaragePendingIfConfirmed(Boolean(garageData.open));
+      }
+    } else {
+      setGarage(null);
+    }
+  }, [coords, refreshMe]);
 
   useEffect(() => {
     void load();
@@ -300,7 +606,10 @@ export default function Home() {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({
+          username: username.trim() || undefined,
+          password,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -314,6 +623,20 @@ export default function Home() {
     }
   }
 
+  async function logout() {
+    await fetch("/api/logout", { method: "POST" });
+    setUser(null);
+    setNeedsLogin(true);
+    setRooms({});
+    setGarage(null);
+    setAllowedGroups([]);
+  }
+
+  function bodyWithCoords<T extends Record<string, unknown>>(base: T) {
+    if (!coords) return base;
+    return { ...base, lat: coords.lat, lng: coords.lng };
+  }
+
   async function toggleMaster(slug: RoomSlug) {
     const state = rooms[slug];
     if (!state || busySlug || homeBusy || garageBusy) return;
@@ -324,7 +647,7 @@ export default function Home() {
       const res = await fetch(`/api/rooms/${slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ on: nextOn }),
+        body: JSON.stringify(bodyWithCoords({ on: nextOn })),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -339,15 +662,16 @@ export default function Home() {
 
   async function setAllRoomsPower(on: boolean) {
     if (!roomsReady || homeBusy || busySlug || busyDeviceId || garageBusy) return;
+    if (allowedRoomSlugs.length === 0) return;
     setHomeBusy(true);
     setError(null);
     try {
       const results = await Promise.all(
-        ROOMS.map(async ({ slug }) => {
+        allowedRoomSlugs.map(async (slug) => {
           const res = await fetch(`/api/rooms/${slug}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ on }),
+            body: JSON.stringify(bodyWithCoords({ on })),
           });
           return { slug, res, data: await res.json() };
         }),
@@ -379,7 +703,9 @@ export default function Home() {
       const res = await fetch(`/api/rooms/${slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceId, on: !currentlyOn }),
+        body: JSON.stringify(
+          bodyWithCoords({ deviceId, on: !currentlyOn }),
+        ),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -402,7 +728,7 @@ export default function Home() {
       const res = await fetch("/api/garage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ open }),
+        body: JSON.stringify(bodyWithCoords({ open })),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -417,6 +743,13 @@ export default function Home() {
     }
   }
 
+  const homeLabel =
+    homeInfo?.reason === "disabled"
+      ? null
+      : homeInfo?.home
+        ? "Home"
+        : "Away";
+
   return (
     <main className="page">
       <div className="glow" aria-hidden />
@@ -424,84 +757,130 @@ export default function Home() {
         <header className="hero">
           <p className="brand">Homey</p>
           <h1>Home</h1>
+          {user && (
+            <div className="session-meta">
+              {homeLabel && (
+                <span
+                  className={`home-pill ${homeInfo?.home ? "is-home" : "is-away"}`}
+                >
+                  {homeLabel}
+                </span>
+              )}
+              <span className="session-user">{user.username}</span>
+              <button type="button" className="logout-btn" onClick={() => void logout()}>
+                Log out
+              </button>
+            </div>
+          )}
         </header>
 
         {needsLogin ? (
           <section className="panel">
             <form className="login" onSubmit={login}>
               <input
+                type="text"
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+              />
+              <input
                 type="password"
-                placeholder="Dashboard password"
+                placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
               />
-              <button type="submit" disabled={loginBusy || !password}>
+              <button
+                type="submit"
+                disabled={loginBusy || !password}
+              >
                 Unlock
               </button>
             </form>
           </section>
         ) : (
           <>
-            <section className="home-master" aria-label="All rooms">
-              <span className="home-master-label">
-                {homeBusy
-                  ? "Updating…"
-                  : !roomsReady
-                    ? "Loading…"
-                    : allRoomsOn
-                      ? "All on"
-                      : anyRoomOn
-                        ? "All"
-                        : "All off"}
-              </span>
-              <div className="home-master-actions">
-                <button
-                  type="button"
-                  className={`home-power${allRoomsOn ? " is-active" : ""}`}
-                  disabled={
-                    !roomsReady || homeBusy || busySlug !== null || garageBusy || allRoomsOn
-                  }
-                  onClick={() => void setAllRoomsPower(true)}
-                >
-                  On
-                </button>
-                <button
-                  type="button"
-                  className={`home-power${
-                    roomsReady && !anyRoomOn ? " is-active" : ""
-                  }`}
-                  disabled={
-                    !roomsReady || homeBusy || busySlug !== null || garageBusy || !anyRoomOn
-                  }
-                  onClick={() => void setAllRoomsPower(false)}
-                >
-                  Off
-                </button>
-              </div>
-            </section>
+            {allowedRoomSlugs.length > 0 && (
+              <section className="home-master" aria-label="All rooms">
+                <span className="home-master-label">
+                  {homeBusy
+                    ? "Updating…"
+                    : !roomsReady
+                      ? "Loading…"
+                      : allRoomsOn
+                        ? "All on"
+                        : anyRoomOn
+                          ? "All"
+                          : "All off"}
+                </span>
+                <div className="home-master-actions">
+                  <button
+                    type="button"
+                    className={`home-power${allRoomsOn ? " is-active" : ""}`}
+                    disabled={
+                      !roomsReady ||
+                      homeBusy ||
+                      busySlug !== null ||
+                      garageBusy ||
+                      allRoomsOn
+                    }
+                    onClick={() => void setAllRoomsPower(true)}
+                  >
+                    On
+                  </button>
+                  <button
+                    type="button"
+                    className={`home-power${
+                      roomsReady && !anyRoomOn ? " is-active" : ""
+                    }`}
+                    disabled={
+                      !roomsReady ||
+                      homeBusy ||
+                      busySlug !== null ||
+                      garageBusy ||
+                      !anyRoomOn
+                    }
+                    onClick={() => void setAllRoomsPower(false)}
+                  >
+                    Off
+                  </button>
+                </div>
+              </section>
+            )}
 
             <div className="rooms">
-              <GarageCard
-                displayOpen={garageDisplayOpen}
-                pending={garagePending}
-                busy={garageBusy || !garage}
-                onSetOpen={(open) => void setGarageDoor(open)}
-              />
-              {ROOMS.map(({ slug, title }) => (
-                <RoomCard
-                  key={slug}
-                  title={title}
-                  state={rooms[slug] ?? null}
-                  busy={busySlug === slug || homeBusy || garageBusy}
-                  busyDeviceId={busyDeviceId}
-                  onToggleMaster={() => void toggleMaster(slug)}
-                  onToggleDevice={(deviceId, currentlyOn) =>
-                    void toggleDevice(slug, deviceId, currentlyOn)
-                  }
+              {garageAllowed && (
+                <GarageCard
+                  displayOpen={garageDisplayOpen}
+                  pending={garagePending}
+                  busy={garageBusy || !garage}
+                  locked={false}
+                  onSetOpen={(open) => void setGarageDoor(open)}
                 />
-              ))}
+              )}
+              {ROOMS.filter(({ slug }) => allowedRoomSlugs.includes(slug)).map(
+                ({ slug, title }) => (
+                  <RoomCard
+                    key={slug}
+                    title={title}
+                    state={rooms[slug] ?? null}
+                    busy={busySlug === slug || homeBusy || garageBusy}
+                    busyDeviceId={busyDeviceId}
+                    onToggleMaster={() => void toggleMaster(slug)}
+                    onToggleDevice={(deviceId, currentlyOn) =>
+                      void toggleDevice(slug, deviceId, currentlyOn)
+                    }
+                  />
+                ),
+              )}
             </div>
+
+            {allowedGroups.length === 0 && (
+              <p className="empty-state">No controls available</p>
+            )}
+
+            {user?.role === "admin" && <AdminPanel />}
           </>
         )}
 
