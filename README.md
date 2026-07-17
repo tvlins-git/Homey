@@ -14,9 +14,11 @@ Set:
 
 - `HOMEY_URL` — e.g. `https://YOUR_ID.connect.athom.com`
 - `HOMEY_TOKEN` — Homey Pro API key (Settings → API Keys)
-- `DASHBOARD_PASSWORD` — password to unlock the UI / API
+- `ADMIN_PASSWORD` (or legacy `DASHBOARD_PASSWORD`) — seeds the admin user on first boot
 
 On Vercel (or similar), add the same values under **Environment Variables**. Do **not** use GitHub Pages for this app — static hosting cannot keep the API key secret.
+
+After the first login, change passwords in the UI: **Change password** (any user) or **Users & access → Set password** (admin). Editing `ADMIN_PASSWORD` in env does not update an already-seeded user.
 
 ## Run locally
 

@@ -348,6 +348,13 @@ h2 {
   text-align: center;
 }
 
+.ok {
+  margin: 0;
+  color: var(--ok, #7dcea0);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
 .empty-state {
   margin: 0;
   text-align: center;
@@ -472,6 +479,8 @@ h2 {
 
 .admin-create input,
 .admin-create button,
+.admin-password-row input,
+.admin-password-row button,
 .admin-acl-row select {
   font: inherit;
   border-radius: 0.65rem;
@@ -481,11 +490,28 @@ h2 {
   color: var(--ink);
 }
 
-.admin-create button {
+.admin-create button,
+.admin-password-row button {
   border: 0;
   background: #f0f0f3;
   color: #111114;
   cursor: pointer;
+}
+
+.admin-password-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+}
+
+.admin-password-row button {
+  white-space: nowrap;
+  padding-inline: 0.75rem;
+}
+
+.admin-password-row button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .admin-user {
