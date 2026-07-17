@@ -147,7 +147,8 @@ export async function setLivingRoomDevicePower(
 
 const OPEN_GARAGE_FLOW = "Open Garage";
 const CLOSE_GARAGE_FLOW = "Close Garage";
-const GARAGE_SENSOR_NAME = "Garage Door";
+const GARAGE_STATUS_VARIABLE = "isGarageOpen";
+const BETTER_LOGIC_APP = "net.i-dev.betterlogic";
 
 type HomeyFlowRecord = {
   id: string;
@@ -178,8 +179,9 @@ type FlowSummary = {
 };
 
 export type GarageState = {
+  /** From Better Logic `isGarageOpen` (true = open). */
   open: boolean;
-  sensorName: string;
+  statusVariable: string;
   openFlowId: string;
   closeFlowId: string;
   openFlowKind: FlowKind;
@@ -187,6 +189,19 @@ export type GarageState = {
   openFlowTriggerable: boolean;
   closeFlowTriggerable: boolean;
 };
+
+type BetterLogicVariable = {
+  name: string;
+  type?: string;
+  value?: unknown;
+};
+
+async function getBetterLogicBoolean(name: string): Promise<boolean> {
+  const variable = await homeyFetch<BetterLogicVariable>(
+    `/api/app/${BETTER_LOGIC_APP}/${encodeURIComponent(name)}`,
+  );
+  return Boolean(variable.value);
+}
 
 function asFlowList(
   records: Record<string, HomeyFlowRecord> | HomeyFlowRecord[],
@@ -303,20 +318,17 @@ async function runGarageFlow(flow: FlowSummary): Promise<void> {
 }
 
 export async function getGarageState(): Promise<GarageState> {
-  const [devices, flows] = await Promise.all([
-    homeyFetch<Record<string, HomeyDevice>>("/api/manager/devices/device"),
+  const [open, flows] = await Promise.all([
+    getBetterLogicBoolean(GARAGE_STATUS_VARIABLE),
     listGarageFlows(),
   ]);
-
-  const sensor = Object.values(devices).find((d) => d.name === GARAGE_SENSOR_NAME);
-  if (!sensor) throw new Error(`Homey device not found: ${GARAGE_SENSOR_NAME}`);
 
   const openFlow = requireFlow(flows, OPEN_GARAGE_FLOW);
   const closeFlow = requireFlow(flows, CLOSE_GARAGE_FLOW);
 
   return {
-    open: Boolean(sensor.capabilitiesObj?.alarm_motion?.value),
-    sensorName: sensor.name,
+    open,
+    statusVariable: GARAGE_STATUS_VARIABLE,
     openFlowId: openFlow.id,
     closeFlowId: closeFlow.id,
     openFlowKind: openFlow.kind,
@@ -343,7 +355,7 @@ export async function setGarageOpen(open: boolean): Promise<GarageState> {
       };
   await runGarageFlow(flow);
 
-  // Sensor may lag; return requested intent with refreshed flow IDs
-  const refreshed = await getGarageState();
-  return { ...refreshed, open };
+  // Better Logic `isGarageOpen` typically updates after ~15–30s; return the real
+  // variable value. The UI keeps an optimistic sticky position until it matches.
+  return getGarageState();
 }

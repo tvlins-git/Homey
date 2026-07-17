@@ -23,20 +23,20 @@ Repo: `tvlins-git/Homey` (deploys from `main` via Vercel).
 
 ## Garage open/close slider
 
-### Homey flows / sensor (lookup by exact name)
+### Homey flows / status (lookup by exact name)
 
 | Role | Name | How |
 | --- | --- | --- |
-| Open | Advanced flow `Open Garage` | `POST …/advancedflow/:id/trigger` (flows now have a Start card → `triggerable: true`) |
+| Open | Advanced flow `Open Garage` | `POST …/advancedflow/:id/trigger` (Start card → `triggerable: true`) |
 | Close | Advanced flow `Close Garage` | same |
-| Status | Device `Garage Door` | read `alarm_motion` (true ≈ open; sensor can lag after command) |
+| Status | Better Logic `isGarageOpen` | `GET /api/app/net.i-dev.betterlogic/isGarageOpen` — `true` = open, `false` = closed (updates ~15–30s after command) |
 
 Lookup is by exact name among enabled flows. If a flow ever loses its Start card (`triggerable: false`), the dashboard falls back to running that flow’s action cards via `flowcardaction/.../run`.
 
 ### Backend
 
 ```ts
-// getGarageState(): { open, sensorName, openFlowId, closeFlowId, openFlowKind, closeFlowKind }
+// getGarageState(): { open, statusVariable, openFlowId, closeFlowId, ... }
 // setGarageOpen(open: boolean): trigger Open Garage or Close Garage flow, return state
 ```
 
@@ -47,13 +47,14 @@ Lookup is by exact name among enabled flows. If a flow ever loses its Start card
 ### Frontend slider behavior
 
 - Placed **above Living Room** (`grid-column: 1 / -1`)
+- Default position from Better Logic `isGarageOpen`
 - `<input type="range" min={0} max={100}>` — `0` closed, `100` open
 - Local state follows drag; on **release** (`onPointerUp` / `onKeyUp`):
-  - `value >= 65` → call API open (if not already open), snap to 100
-  - `value <= 35` → call API close (if not already closed), snap to 0
+  - `value >= 65` → call API open (if not already open/opening), snap to 100, show Opening until `isGarageOpen` becomes true
+  - `value <= 35` → call API close (if not already closed/closing), snap to 0, show Closing until `isGarageOpen` becomes false
   - else snap back to the sticky commanded position
-- After open/close, slider + badge stay at that side until the user slides the other way (sensor lag must not pull it back)
-- Labels: Close (left) / Open (right); badge shows Open/Closed
+- After command, keep visual until the variable catches up, then follow Homey again
+- Labels: Close (left) / Open (right); badge shows Open / Opening / Closed / Closing
 
 ### Safety
 

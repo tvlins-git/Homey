@@ -13,7 +13,7 @@ type RoomState = {
 
 type GarageState = {
   open: boolean;
-  sensorName: string;
+  statusVariable: string;
 };
 
 function GarageCard({
@@ -26,13 +26,26 @@ function GarageCard({
   onSetOpen: (open: boolean) => void;
 }) {
   const [slider, setSlider] = useState(0);
-  /** After the user commits open/close, keep that position until they slide the other way. */
+  /**
+   * After the user commits open/close, keep that visual until Better Logic
+   * `isGarageOpen` catches up (often 15–30s), then follow the variable again.
+   */
   const [stickyOpen, setStickyOpen] = useState<boolean | null>(null);
+  const pending = stickyOpen !== null && state !== null && stickyOpen !== state.open;
   const displayedOpen = stickyOpen ?? state?.open ?? false;
 
   useEffect(() => {
-    // Only follow the sensor before the user has commanded a position.
-    if (!state || stickyOpen !== null) return;
+    if (!state) return;
+    // Variable confirmed the commanded state — drop sticky and follow Homey again.
+    if (stickyOpen !== null && stickyOpen === state.open) {
+      setStickyOpen(null);
+      setSlider(state.open ? 100 : 0);
+      return;
+    }
+    if (stickyOpen !== null) {
+      setSlider(stickyOpen ? 100 : 0);
+      return;
+    }
     setSlider(state.open ? 100 : 0);
   }, [state, stickyOpen]);
 
@@ -56,25 +69,39 @@ function GarageCard({
     setSlider(displayedOpen ? 100 : 0);
   }
 
+  const badgeLabel = !state
+    ? "…"
+    : pending
+      ? displayedOpen
+        ? "Opening"
+        : "Closing"
+      : displayedOpen
+        ? "Open"
+        : "Closed";
+
+  const metaLabel = busy
+    ? "Sending…"
+    : !state
+      ? "Loading…"
+      : pending
+        ? displayedOpen
+          ? "Opening… waiting for Homey"
+          : "Closing… waiting for Homey"
+        : displayedOpen
+          ? "Open · slide left to close"
+          : "Closed · slide right to open";
+
   return (
     <section className="panel garage">
       <div className="room-head">
         <div className="room-title">
           <h2>Garage</h2>
-          <p className="room-meta">
-            {busy
-              ? "Sending…"
-              : state
-                ? displayedOpen
-                  ? "Open · slide left to close"
-                  : "Closed · slide right to open"
-                : "Loading…"}
-          </p>
+          <p className="room-meta">{metaLabel}</p>
         </div>
         <span
           className={`garage-badge ${displayedOpen ? "is-open" : "is-closed"}`}
         >
-          {displayedOpen ? "Open" : "Closed"}
+          {badgeLabel}
         </span>
       </div>
 
