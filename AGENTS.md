@@ -53,7 +53,7 @@ Lookup is by exact name among enabled flows. If a flow ever loses its Start card
   - `value >= 65` → call API open (if not already open/opening), snap to 100, show Opening until `isGarageOpen` becomes true
   - `value <= 35` → call API close (if not already closed/closing), snap to 0, show Closing until `isGarageOpen` becomes false
   - else snap back to the sticky commanded position
-- After command, keep visual until the variable catches up, then follow Homey again
+- After command, keep slider + badge at that side until `isGarageOpen` matches (often 15–30s). Pending state lives in the parent and ignores variable flicker for at least 15s before clearing.
 - Labels: Close (left) / Open (right); badge shows Open / Opening / Closed / Closing
 
 ### Safety
