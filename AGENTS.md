@@ -28,11 +28,16 @@ Repo: `tvlins-git/Homey` (deploys from `main` via Vercel).
 
 ## Home detection (IP + geo)
 
-**Home** = client public IP ∈ `HOME_WAN_IPS` **OR** coords within `HOME_RADIUS_M` of `HOME_LAT`/`HOME_LNG`.
+**Home** = client public IP ∈ `HOME_WAN_IPS` (exact or CIDR) **OR** coords within `HOME_RADIUS_M` of the geofence center.
 
-- If neither IP nor geofence is configured → home check **disabled** (`home: true`) so local/dev is not bricked
-- iOS Safari supported (no WiFi/SSID APIs)
-- Routes: `GET|POST /api/home`; control POSTs may include `{ lat, lng }`
+Geofence center (first match):
+1. `HOME_LAT` / `HOME_LNG` env
+2. Homey Settings → Location (`GET /api/manager/geolocation/option/location`)
+
+- If neither IP nor geofence is available → home check **disabled** (`home: true`) so local/dev is not bricked
+- iOS Safari: no WiFi/SSID APIs. **iCloud Private Relay** (`2a09:bac3:…`) hides the home WAN IP even on home Wi‑Fi — IP match fails and the UI prompts for **Share location**
+- Routes: `GET|POST /api/home`; GETs may use `?lat=&lng=`; control POSTs may include `{ lat, lng }`
+- Response includes `clientIp`, `proxied`, `geoConfigured` for debugging
 
 ## Multi-user ACL
 

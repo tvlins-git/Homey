@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession, userCanAccessGroup } from "@/lib/auth";
 import { getGarageState, setGarageOpen } from "@/lib/homey";
-import { isHome, parseCoords } from "@/lib/home";
+import { isHome, parseCoordsFromRequest } from "@/lib/home";
 
 export async function GET(request: Request) {
   const session = await requireSession();
@@ -9,7 +9,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const home = isHome(request);
+  const coords = parseCoordsFromRequest(request);
+  const home = await isHome(request, coords);
   if (!userCanAccessGroup(session, "garage", home.home)) {
     return NextResponse.json(
       { error: "Forbidden", reason: "acl" },
@@ -45,8 +46,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const coords = parseCoords(body);
-    const home = isHome(request, coords);
+    const coords = parseCoordsFromRequest(request, body);
+    const home = await isHome(request, coords);
     if (!userCanAccessGroup(session, "garage", home.home)) {
       return NextResponse.json(
         { error: "Not allowed", reason: home.home ? "acl" : "away" },

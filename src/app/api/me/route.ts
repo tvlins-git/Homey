@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireSession, userCanAccessGroup } from "@/lib/auth";
 import { GROUPS } from "@/lib/groups";
-import { homeCheckConfigured, isHome, parseCoords } from "@/lib/home";
+import { homeCheckConfigured, isHome, parseCoordsFromRequest } from "@/lib/home";
 import { canControl } from "@/lib/acl";
+import "@/lib/homey";
 
 function mePayload(
   session: NonNullable<Awaited<ReturnType<typeof requireSession>>>,
-  home: ReturnType<typeof isHome>,
+  home: Awaited<ReturnType<typeof isHome>>,
 ) {
   const groups = GROUPS.filter((g) =>
     userCanAccessGroup(session, g.id, home.home),
@@ -24,8 +25,7 @@ function mePayload(
     },
     home: {
       ...home,
-      geoConfigured: Boolean(process.env.HOME_LAT && process.env.HOME_LNG),
-      configured: homeCheckConfigured(),
+      configured: homeCheckConfigured() || home.geoConfigured,
     },
     acl: session.acl,
     groups,
@@ -43,7 +43,8 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(mePayload(session, isHome(request)));
+  const coords = parseCoordsFromRequest(request);
+  return NextResponse.json(mePayload(session, await isHome(request, coords)));
 }
 
 export async function POST(request: Request) {
@@ -52,6 +53,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const body = await request.json().catch(() => null);
-  const coords = parseCoords(body);
-  return NextResponse.json(mePayload(session, isHome(request, coords)));
+  const coords = parseCoordsFromRequest(request, body);
+  return NextResponse.json(mePayload(session, await isHome(request, coords)));
 }

@@ -5,7 +5,7 @@ import {
   setRoomDevicePower,
   setRoomPower,
 } from "@/lib/homey";
-import { isHome, parseCoords } from "@/lib/home";
+import { isHome, parseCoordsFromRequest } from "@/lib/home";
 
 /** Kept for compatibility; prefer /api/rooms/living-room */
 export async function GET(request: Request) {
@@ -13,7 +13,8 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const home = isHome(request);
+  const coords = parseCoordsFromRequest(request);
+  const home = await isHome(request, coords);
   if (!userCanAccessGroup(session, "living-room", home.home)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const home = isHome(request, parseCoords(body));
+    const home = await isHome(request, parseCoordsFromRequest(request, body));
     if (!userCanAccessGroup(session, "living-room", home.home)) {
       return NextResponse.json({ error: "Not allowed" }, { status: 403 });
     }
