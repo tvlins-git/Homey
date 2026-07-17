@@ -7,7 +7,12 @@ export type HomeResult = {
   /** True when the client IP looks like iCloud Private Relay / privacy proxy. */
   proxied: boolean;
   geoConfigured: boolean;
+  /** Active geofence radius in meters, when configured. */
+  radiusM: number | null;
 };
+
+/** Default geofence radius (~house/yard). Override with HOME_RADIUS_M. */
+export const DEFAULT_HOME_RADIUS_M = 50;
 
 type GeoConfig = {
   lat: number;
@@ -37,15 +42,19 @@ function parseWanEntries(): string[] {
     .filter(Boolean);
 }
 
+function parseRadiusM(): number {
+  const radiusM = Number(process.env.HOME_RADIUS_M ?? String(DEFAULT_HOME_RADIUS_M));
+  return Number.isFinite(radiusM) && radiusM > 0 ? radiusM : DEFAULT_HOME_RADIUS_M;
+}
+
 function parseEnvGeoConfig(): GeoConfig | null {
   const lat = Number(process.env.HOME_LAT);
   const lng = Number(process.env.HOME_LNG);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const radiusM = Number(process.env.HOME_RADIUS_M ?? "150");
   return {
     lat,
     lng,
-    radiusM: Number.isFinite(radiusM) && radiusM > 0 ? radiusM : 150,
+    radiusM: parseRadiusM(),
     source: "env",
   };
 }
@@ -71,11 +80,10 @@ async function resolveGeoConfig(): Promise<GeoConfig | null> {
   if (env) return env;
   const coords = await fetchHomeyCoords();
   if (!coords) return null;
-  const radiusM = Number(process.env.HOME_RADIUS_M ?? "150");
   return {
     lat: coords.lat,
     lng: coords.lng,
-    radiusM: Number.isFinite(radiusM) && radiusM > 0 ? radiusM : 150,
+    radiusM: parseRadiusM(),
     source: "homey",
   };
 }
@@ -270,6 +278,7 @@ export async function isHome(
       clientIp,
       proxied,
       geoConfigured: false,
+      radiusM: null,
     };
   }
 
@@ -280,16 +289,18 @@ export async function isHome(
       clientIp,
       proxied,
       geoConfigured: geo !== null,
+      radiusM: geo?.radiusM ?? null,
     };
   }
 
-  if (isHomeGeo(coords ?? null, geo)) {
+  if (geo && isHomeGeo(coords ?? null, geo)) {
     return {
       home: true,
       reason: "geo",
       clientIp,
       proxied,
       geoConfigured: true,
+      radiusM: geo.radiusM,
     };
   }
 
@@ -299,5 +310,6 @@ export async function isHome(
     clientIp,
     proxied,
     geoConfigured: geo !== null,
+    radiusM: geo?.radiusM ?? null,
   };
 }

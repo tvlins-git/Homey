@@ -28,22 +28,33 @@ type HomeInfo = {
   configured?: boolean;
   clientIp?: string | null;
   proxied?: boolean;
+  radiusM?: number | null;
 };
 
 const COORDS_STORAGE_KEY = "homey_home_coords";
+/** How often to re-read GPS while the dashboard is open. */
+const GEO_REFRESH_MS = 60_000;
+/** Dashboard room/garage poll interval (reuses last GPS between refreshes). */
+const DASHBOARD_POLL_MS = 5_000;
 
-function readStoredCoords(): HomeCoords | null {
+type StoredCoords = HomeCoords & { at: number };
+
+function readStoredCoords(): StoredCoords | null {
   try {
     const raw = sessionStorage.getItem(COORDS_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as HomeCoords;
+    const parsed = JSON.parse(raw) as Partial<StoredCoords>;
     if (
       typeof parsed?.lat === "number" &&
       typeof parsed?.lng === "number" &&
       Number.isFinite(parsed.lat) &&
       Number.isFinite(parsed.lng)
     ) {
-      return parsed;
+      return {
+        lat: parsed.lat,
+        lng: parsed.lng,
+        at: typeof parsed.at === "number" ? parsed.at : 0,
+      };
     }
   } catch {
     // ignore
@@ -57,7 +68,8 @@ function storeCoords(pos: HomeCoords | null) {
       sessionStorage.removeItem(COORDS_STORAGE_KEY);
       return;
     }
-    sessionStorage.setItem(COORDS_STORAGE_KEY, JSON.stringify(pos));
+    const payload: StoredCoords = { ...pos, at: Date.now() };
+    sessionStorage.setItem(COORDS_STORAGE_KEY, JSON.stringify(payload));
   } catch {
     // ignore
   }
@@ -76,7 +88,7 @@ type AdminUserRow = {
   acl: Record<GroupId, AccessMode>;
 };
 
-function getGeolocation(): Promise<HomeCoords | null> {
+function getGeolocation(forceFresh = false): Promise<HomeCoords | null> {
   return new Promise((resolve) => {
     if (!navigator.geolocation) {
       resolve(null);
@@ -89,7 +101,12 @@ function getGeolocation(): Promise<HomeCoords | null> {
           lng: pos.coords.longitude,
         }),
       () => resolve(null),
-      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 60_000 },
+      {
+        enableHighAccuracy: true,
+        timeout: 12_000,
+        // Prefer a fresh fix when refreshing; allow a short cache otherwise.
+        maximumAge: forceFresh ? 0 : 15_000,
+      },
     );
   });
 }
@@ -486,7 +503,8 @@ export default function Home() {
     null,
   );
   const garagePendingSinceRef = useRef(0);
-  const geoTriedRef = useRef(false);
+  const geoFetchedAtRef = useRef(0);
+  const geoInFlightRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [busySlug, setBusySlug] = useState<RoomSlug | null>(null);
   const [busyDeviceId, setBusyDeviceId] = useState<string | null>(null);
@@ -561,11 +579,13 @@ export default function Home() {
     storeCoords(pos);
   }, []);
 
-  const requestHomeLocation = useCallback(async () => {
+  const requestHomeLocation = useCallback(async (forceFresh = true) => {
+    if (geoInFlightRef.current) return null;
+    geoInFlightRef.current = true;
     setGeoBusy(true);
     setGeoHint(null);
     try {
-      const pos = await getGeolocation();
+      const pos = await getGeolocation(forceFresh);
       if (!pos) {
         setGeoHint(
           "Location unavailable. Allow location for this site, or turn off iCloud Private Relay for Safari.",
@@ -573,6 +593,7 @@ export default function Home() {
         return null;
       }
       applyCoords(pos);
+      geoFetchedAtRef.current = Date.now();
       const me = await refreshMe(pos);
       if (me && !me.home.home) {
         setGeoHint(
@@ -585,6 +606,7 @@ export default function Home() {
       }
       return pos;
     } finally {
+      geoInFlightRef.current = false;
       setGeoBusy(false);
     }
   }, [applyCoords, refreshMe]);
@@ -592,7 +614,11 @@ export default function Home() {
   const load = useCallback(async () => {
     setError(null);
 
-    let activeCoords = coords ?? readStoredCoords();
+    const stored = readStoredCoords();
+    let activeCoords: HomeCoords | null = coords ?? stored;
+    if (stored && !geoFetchedAtRef.current) {
+      geoFetchedAtRef.current = stored.at;
+    }
     if (activeCoords && !coords) {
       setCoords(activeCoords);
     }
@@ -604,25 +630,28 @@ export default function Home() {
       return;
     }
 
-    // IP often fails on iPhone Safari (iCloud Private Relay). Use geofence.
-    const shouldTryGeo =
-      !me.home.home &&
+    // Re-read GPS on an interval (and once when first needed). Dashboard
+    // data polls faster, but reuses the last fix between geo refreshes.
+    const geoAge = Date.now() - geoFetchedAtRef.current;
+    const shouldRefreshGeo =
       me.home.geoConfigured &&
-      !activeCoords &&
-      !geoTriedRef.current;
-    if (shouldTryGeo) {
-      geoTriedRef.current = true;
-      const pos = await getGeolocation();
+      !geoInFlightRef.current &&
+      (geoFetchedAtRef.current === 0 || geoAge >= GEO_REFRESH_MS);
+
+    if (shouldRefreshGeo) {
+      const pos = await getGeolocation(geoFetchedAtRef.current !== 0);
       if (pos) {
         applyCoords(pos);
         activeCoords = pos;
+        geoFetchedAtRef.current = Date.now();
         me = await refreshMe(pos);
         if (!me) {
           setRooms({});
           setGarage(null);
           return;
         }
-      } else if (me.home.proxied) {
+        if (me.home.home) setGeoHint(null);
+      } else if (!activeCoords && me.home.proxied) {
         setGeoHint(
           "Safari is using iCloud Private Relay, so Wi‑Fi IP cannot prove home. Tap Share location.",
         );
@@ -687,7 +716,7 @@ export default function Home() {
 
   useEffect(() => {
     void load();
-    const id = setInterval(() => void load(), 5000);
+    const id = setInterval(() => void load(), DASHBOARD_POLL_MS);
     return () => clearInterval(id);
   }, [load]);
 
