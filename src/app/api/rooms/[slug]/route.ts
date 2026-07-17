@@ -6,7 +6,7 @@ import {
   setRoomDevicePower,
   setRoomPower,
 } from "@/lib/homey";
-import { isHome, parseCoords } from "@/lib/home";
+import { isHome, parseCoordsFromRequest } from "@/lib/home";
 
 type RouteContext = { params: Promise<{ slug: string }> };
 
@@ -21,7 +21,8 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Unknown room" }, { status: 404 });
   }
 
-  const home = isHome(request);
+  const coords = parseCoordsFromRequest(request);
+  const home = await isHome(request, coords);
   if (!userCanAccessGroup(session, slug, home.home)) {
     return NextResponse.json(
       { error: "Forbidden", reason: "acl" },
@@ -64,8 +65,8 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const coords = parseCoords(body);
-    const home = isHome(request, coords);
+    const coords = parseCoordsFromRequest(request, body);
+    const home = await isHome(request, coords);
     if (!userCanAccessGroup(session, slug, home.home)) {
       return NextResponse.json(
         { error: "Not allowed", reason: home.home ? "acl" : "away" },

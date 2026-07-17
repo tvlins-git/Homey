@@ -1,3 +1,4 @@
+import { setHomeyLocationFetcher, type HomeCoords } from "@/lib/home";
 import { ROOM_NAMES, type RoomSlug } from "@/lib/rooms";
 
 export { ROOM_NAMES, ROOMS, type RoomSlug } from "@/lib/rooms";
@@ -359,3 +360,33 @@ export async function setGarageOpen(open: boolean): Promise<GarageState> {
   // variable value. The UI keeps an optimistic sticky position until it matches.
   return getGarageState();
 }
+
+type HomeyLocationOption = {
+  latitude?: number;
+  longitude?: number;
+  lat?: number;
+  lng?: number;
+  accuracy?: number;
+};
+
+/** Homey's configured home coordinates (Settings → Location). */
+export async function getHomeyLocation(): Promise<HomeCoords | null> {
+  try {
+    const loc = await homeyFetch<HomeyLocationOption | { value?: HomeyLocationOption }>(
+      "/api/manager/geolocation/option/location",
+    );
+    const value =
+      loc && typeof loc === "object" && "value" in loc && loc.value
+        ? loc.value
+        : (loc as HomeyLocationOption | undefined);
+    if (!value || typeof value !== "object") return null;
+    const lat = Number(value.latitude ?? value.lat);
+    const lng = Number(value.longitude ?? value.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  } catch {
+    return null;
+  }
+}
+
+setHomeyLocationFetcher(getHomeyLocation);

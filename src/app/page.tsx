@@ -26,7 +26,42 @@ type HomeInfo = {
   reason: string;
   geoConfigured?: boolean;
   configured?: boolean;
+  clientIp?: string | null;
+  proxied?: boolean;
 };
+
+const COORDS_STORAGE_KEY = "homey_home_coords";
+
+function readStoredCoords(): HomeCoords | null {
+  try {
+    const raw = sessionStorage.getItem(COORDS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as HomeCoords;
+    if (
+      typeof parsed?.lat === "number" &&
+      typeof parsed?.lng === "number" &&
+      Number.isFinite(parsed.lat) &&
+      Number.isFinite(parsed.lng)
+    ) {
+      return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function storeCoords(pos: HomeCoords | null) {
+  try {
+    if (!pos) {
+      sessionStorage.removeItem(COORDS_STORAGE_KEY);
+      return;
+    }
+    sessionStorage.setItem(COORDS_STORAGE_KEY, JSON.stringify(pos));
+  } catch {
+    // ignore
+  }
+}
 
 type MeUser = {
   id: string;
@@ -57,6 +92,12 @@ function getGeolocation(): Promise<HomeCoords | null> {
       { enableHighAccuracy: true, timeout: 12_000, maximumAge: 60_000 },
     );
   });
+}
+
+function withCoordsPath(path: string, pos: HomeCoords | null | undefined): string {
+  if (!pos) return path;
+  const join = path.includes("?") ? "&" : "?";
+  return `${path}${join}lat=${encodeURIComponent(String(pos.lat))}&lng=${encodeURIComponent(String(pos.lng))}`;
 }
 
 function GarageCard({
@@ -437,6 +478,8 @@ export default function Home() {
   const [homeInfo, setHomeInfo] = useState<HomeInfo | null>(null);
   const [allowedGroups, setAllowedGroups] = useState<AllowedGroup[]>([]);
   const [coords, setCoords] = useState<HomeCoords | null>(null);
+  const [geoBusy, setGeoBusy] = useState(false);
+  const [geoHint, setGeoHint] = useState<string | null>(null);
   const [rooms, setRooms] = useState<Partial<Record<RoomSlug, RoomState>>>({});
   const [garage, setGarage] = useState<GarageState | null>(null);
   const [garagePendingOpen, setGaragePendingOpen] = useState<boolean | null>(
@@ -490,7 +533,7 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(withCoords),
         })
-      : await fetch("/api/me");
+      : await fetch(withCoordsPath("/api/me", withCoords));
     const data = await res.json();
     if (res.status === 401) {
       setNeedsLogin(true);
@@ -513,28 +556,76 @@ export default function Home() {
     };
   }, []);
 
+  const applyCoords = useCallback((pos: HomeCoords | null) => {
+    setCoords(pos);
+    storeCoords(pos);
+  }, []);
+
+  const requestHomeLocation = useCallback(async () => {
+    setGeoBusy(true);
+    setGeoHint(null);
+    try {
+      const pos = await getGeolocation();
+      if (!pos) {
+        setGeoHint(
+          "Location unavailable. Allow location for this site, or turn off iCloud Private Relay for Safari.",
+        );
+        return null;
+      }
+      applyCoords(pos);
+      const me = await refreshMe(pos);
+      if (me && !me.home.home) {
+        setGeoHint(
+          me.home.proxied
+            ? "Still away — Private Relay hides your home IP. Location is outside the home geofence."
+            : "Still away — location is outside the home geofence.",
+        );
+      } else if (me?.home.home) {
+        setGeoHint(null);
+      }
+      return pos;
+    } finally {
+      setGeoBusy(false);
+    }
+  }, [applyCoords, refreshMe]);
+
   const load = useCallback(async () => {
     setError(null);
 
-    let me = await refreshMe(coords);
+    let activeCoords = coords ?? readStoredCoords();
+    if (activeCoords && !coords) {
+      setCoords(activeCoords);
+    }
+
+    let me = await refreshMe(activeCoords);
     if (!me) {
       setRooms({});
       setGarage(null);
       return;
     }
 
-    // If away and geofence configured, try browser location once
-    if (!me.home.home && me.home.geoConfigured && !coords && !geoTriedRef.current) {
+    // IP often fails on iPhone Safari (iCloud Private Relay). Use geofence.
+    const shouldTryGeo =
+      !me.home.home &&
+      me.home.geoConfigured &&
+      !activeCoords &&
+      !geoTriedRef.current;
+    if (shouldTryGeo) {
       geoTriedRef.current = true;
       const pos = await getGeolocation();
       if (pos) {
-        setCoords(pos);
+        applyCoords(pos);
+        activeCoords = pos;
         me = await refreshMe(pos);
         if (!me) {
           setRooms({});
           setGarage(null);
           return;
         }
+      } else if (me.home.proxied) {
+        setGeoHint(
+          "Safari is using iCloud Private Relay, so Wi‑Fi IP cannot prove home. Tap Share location.",
+        );
       }
     }
 
@@ -547,11 +638,13 @@ export default function Home() {
     const [roomResults, garageRes] = await Promise.all([
       Promise.all(
         roomSlugs.map(async (slug) => {
-          const res = await fetch(`/api/rooms/${slug}`);
+          const res = await fetch(withCoordsPath(`/api/rooms/${slug}`, activeCoords));
           return { slug, res, data: await res.json() };
         }),
       ),
-      includeGarage ? fetch("/api/garage") : Promise.resolve(null),
+      includeGarage
+        ? fetch(withCoordsPath("/api/garage", activeCoords))
+        : Promise.resolve(null),
     ]);
 
     if (roomResults.some((r) => r.res.status === 401)) {
@@ -590,7 +683,7 @@ export default function Home() {
     } else {
       setGarage(null);
     }
-  }, [coords, refreshMe]);
+  }, [applyCoords, coords, refreshMe]);
 
   useEffect(() => {
     void load();
@@ -750,6 +843,13 @@ export default function Home() {
         ? "Home"
         : "Away";
 
+  const showLocationCta =
+    Boolean(user) &&
+    Boolean(homeInfo) &&
+    homeInfo?.reason !== "disabled" &&
+    !homeInfo?.home &&
+    Boolean(homeInfo?.geoConfigured);
+
   return (
     <main className="page">
       <div className="glow" aria-hidden />
@@ -773,6 +873,27 @@ export default function Home() {
             </div>
           )}
         </header>
+
+        {showLocationCta && (
+          <div className="home-away-banner" role="status">
+            <p>
+              {homeInfo?.proxied
+                ? "iCloud Private Relay hides your home Wi‑Fi IP. Share location to confirm you’re home."
+                : "Not on the home IP. Share location to confirm you’re home."}
+            </p>
+            <button
+              type="button"
+              className="locate-btn"
+              disabled={geoBusy}
+              onClick={() => void requestHomeLocation().then((pos) => {
+                if (pos) void load();
+              })}
+            >
+              {geoBusy ? "Locating…" : "Share location"}
+            </button>
+            {geoHint && <p className="home-away-hint">{geoHint}</p>}
+          </div>
+        )}
 
         {needsLogin ? (
           <section className="panel">

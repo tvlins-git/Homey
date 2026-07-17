@@ -381,6 +381,45 @@ h2 {
   color: #111114;
 }
 
+.home-away-banner {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.85rem;
+  background: rgba(28, 28, 32, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.home-away-banner p {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.home-away-hint {
+  color: var(--ink) !important;
+  opacity: 0.85;
+}
+
+.locate-btn {
+  justify-self: start;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(245, 245, 245, 0.94);
+  color: #111114;
+  cursor: pointer;
+}
+
+.locate-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .session-user {
   font-size: 0.78rem;
   color: var(--muted);
