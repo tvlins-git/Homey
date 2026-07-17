@@ -65,6 +65,7 @@ body {
   justify-content: center;
   gap: 0.55rem;
   padding: 0.15rem 0;
+  flex-wrap: wrap;
 }
 
 .brand {
@@ -345,6 +346,161 @@ h2 {
   color: var(--danger);
   font-size: 0.85rem;
   text-align: center;
+}
+
+.empty-state {
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 1rem 0.5rem;
+}
+
+.session-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.home-pill {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+.home-pill.is-home {
+  background: rgba(240, 240, 243, 0.92);
+  color: #111114;
+}
+
+.session-user {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.logout-btn {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.admin-panel {
+  grid-column: 1 / -1;
+}
+
+.admin-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.admin-toggle h2 {
+  margin: 0;
+}
+
+.admin-body {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.admin-create {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.admin-create input,
+.admin-create button,
+.admin-acl-row select {
+  font: inherit;
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.admin-create button {
+  border: 0;
+  background: #f0f0f3;
+  color: #111114;
+  cursor: pointer;
+}
+
+.admin-user {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.65rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.admin-user-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.admin-role {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-delete {
+  margin-left: auto;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.admin-acl {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.admin-acl-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.admin-acl-row select {
+  min-width: 7.5rem;
+  padding: 0.35rem 0.5rem;
 }
 
 .app-version {

@@ -1,22 +1,32 @@
 import { NextResponse } from "next/server";
-import { isAuthenticated } from "@/lib/auth";
+import { requireSession, userCanAccessGroup } from "@/lib/auth";
 import {
   getRoomState,
   isRoomSlug,
   setRoomDevicePower,
   setRoomPower,
 } from "@/lib/homey";
+import { isHome, parseCoords } from "@/lib/home";
 
 type RouteContext = { params: Promise<{ slug: string }> };
 
-export async function GET(_request: Request, context: RouteContext) {
-  if (!(await isAuthenticated())) {
+export async function GET(request: Request, context: RouteContext) {
+  const session = await requireSession();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { slug } = await context.params;
   if (!isRoomSlug(slug)) {
     return NextResponse.json({ error: "Unknown room" }, { status: 404 });
+  }
+
+  const home = isHome(request);
+  if (!userCanAccessGroup(session, slug, home.home)) {
+    return NextResponse.json(
+      { error: "Forbidden", reason: "acl" },
+      { status: 403 },
+    );
   }
 
   try {
@@ -29,7 +39,8 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 export async function POST(request: Request, context: RouteContext) {
-  if (!(await isAuthenticated())) {
+  const session = await requireSession();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -42,10 +53,24 @@ export async function POST(request: Request, context: RouteContext) {
     const body = (await request.json()) as {
       on?: boolean;
       deviceId?: string;
+      lat?: number;
+      lng?: number;
     };
 
     if (typeof body.on !== "boolean") {
-      return NextResponse.json({ error: "Body must include boolean on" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Body must include boolean on" },
+        { status: 400 },
+      );
+    }
+
+    const coords = parseCoords(body);
+    const home = isHome(request, coords);
+    if (!userCanAccessGroup(session, slug, home.home)) {
+      return NextResponse.json(
+        { error: "Not allowed", reason: home.home ? "acl" : "away" },
+        { status: 403 },
+      );
     }
 
     const state = body.deviceId

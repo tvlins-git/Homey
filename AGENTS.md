@@ -6,20 +6,47 @@ Repo: `tvlins-git/Homey` (deploys from `main` via Vercel).
 ## Architecture
 
 - Browser → Next.js API routes (cookie auth) → Homey Web API
-- Server-only env: `HOMEY_URL`, `HOMEY_TOKEN`, `DASHBOARD_PASSWORD` (never `NEXT_PUBLIC_*`)
+- Server-only env: `HOMEY_URL`, `HOMEY_TOKEN`, `ADMIN_PASSWORD` / `DASHBOARD_PASSWORD`, home + KV vars (never `NEXT_PUBLIC_*`)
 - Homey cloud URL: `https://65f2e959051ba009ec117757.connect.athom.com` (pattern `https://<homeyId>.connect.athom.com`)
-- Auth: [`src/lib/auth.ts`](src/lib/auth.ts) + `POST /api/login`
+- Auth: [`src/lib/auth.ts`](src/lib/auth.ts) + `POST /api/login` (username/password; multi-user)
+- Users/ACL: [`src/lib/users.ts`](src/lib/users.ts) (Upstash Redis, in-memory fallback)
+- Home detection: [`src/lib/home.ts`](src/lib/home.ts) — WAN IP allowlist + optional geofence
 - Homey client: [`src/lib/homey.ts`](src/lib/homey.ts)
 - Room registry: [`src/lib/rooms.ts`](src/lib/rooms.ts) (`ROOM_NAMES` / `ROOMS`)
+- Groups (rooms + garage): [`src/lib/groups.ts`](src/lib/groups.ts)
 
 ## Current UI
 
+- Multi-user login; admin panel for per-group access (`always` / `home` / `never`)
+- Dashboard shows only groups the current user may control given home/away
 - Garage slider **above** Living Room (open/close via Homey flows)
 - Multi-room light dashboard (Living Room, Dining Room, Master Bedroom, Maria room, Ellie room, Backyard, Frontyard)
-- API: `GET|POST /api/rooms/[slug]`
+- API: `GET|POST /api/rooms/[slug]`, `GET|POST /api/garage`, `GET/POST /api/home`, `GET/POST /api/me`, `GET/POST/PATCH/DELETE /api/admin/users`
 - Master toggle + per-device on/off for `light` / `socket` with `onoff`
 - Mixed device state → master turns **all off**
 - Compact mobile layout in [`src/app/page.tsx`](src/app/page.tsx) + [`src/app/globals.css`](src/app/globals.css)
+
+## Home detection (IP + geo)
+
+**Home** = client public IP ∈ `HOME_WAN_IPS` **OR** coords within `HOME_RADIUS_M` of `HOME_LAT`/`HOME_LNG`.
+
+- If neither IP nor geofence is configured → home check **disabled** (`home: true`) so local/dev is not bricked
+- iOS Safari supported (no WiFi/SSID APIs)
+- Routes: `GET|POST /api/home`; control POSTs may include `{ lat, lng }`
+
+## Multi-user ACL
+
+Per user, per group (`garage` + room slugs), one mode:
+
+| Mode | Meaning |
+| --- | --- |
+| `always` | Control when home and away |
+| `home` | Control only when home |
+| `never` | No access (default for new users) |
+
+- Seed admin from `ADMIN_USERNAME` + `ADMIN_PASSWORD` (or legacy `DASHBOARD_PASSWORD`)
+- Admin gets all groups `always` and can manage users in the UI
+- Persist users in Upstash (`KV_REST_API_URL` / `KV_REST_API_TOKEN`); in-memory if unset (dev only)
 
 ## Garage open/close slider
 
@@ -40,13 +67,13 @@ Lookup is by exact name among enabled flows. If a flow ever loses its Start card
 // setGarageOpen(open: boolean): trigger Open Garage or Close Garage flow, return state
 ```
 
-- Route: `GET|POST /api/garage` (auth required)
-- POST body: `{ "open": true | false }`
+- Route: `GET|POST /api/garage` (auth + ACL required)
+- POST body: `{ "open": true | false, "lat"?: number, "lng"?: number }`
 - Files: `src/lib/homey.ts`, `src/app/api/garage/route.ts`, `GarageCard` in `src/app/page.tsx`, `.garage-slider` in `src/app/globals.css`
 
 ### Frontend slider behavior
 
-- Placed **above Living Room** (`grid-column: 1 / -1`)
+- Placed **above Living Room** (`grid-column: 1 / -1`) when ACL allows
 - Default position from Better Logic `isGarageOpen`
 - `<input type="range" min={0} max={100}>` — `0` closed, `100` open
 - Local state follows drag; on **release** (`onPointerUp` / `onKeyUp`):
@@ -64,7 +91,7 @@ Lookup is by exact name among enabled flows. If a flow ever loses its Start card
 ## Local / deploy
 
 ```bash
-cp .env.example .env.local   # HOMEY_URL, HOMEY_TOKEN, DASHBOARD_PASSWORD
+cp .env.example .env.local   # HOMEY_URL, HOMEY_TOKEN, ADMIN_PASSWORD, optional HOME_* / KV_*
 npm install && npm run dev
 npx vercel deploy --prod     # project: tvlins/homey
 ```
